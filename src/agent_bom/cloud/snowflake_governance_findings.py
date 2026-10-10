@@ -208,3 +208,128 @@ def _find_sensitive_data_access(report: GovernanceReport) -> list[GovernanceFind
             )
 
     return findings
+
+
+def _aggregate_agent_usage(report: GovernanceReport) -> dict[str, dict]:
+    """Aggregate CORTEX_AGENT_USAGE_HISTORY records per agent."""
+    agent_stats: dict[str, dict] = {}
+    for rec in report.agent_usage:
+        stats = agent_stats.setdefault(
+            rec.agent_name,
+            {
+                "total_calls": 0,
+                "total_tokens": 0,
+                "total_credits": 0.0,
+                "total_tool_calls": 0,
+                "failures": 0,
+                "roles": set(),
+            },
+        )
+        stats["total_calls"] += 1
+        stats["total_tokens"] += rec.total_tokens
+        stats["total_credits"] += rec.credits_used
+        stats["total_tool_calls"] += rec.tool_calls
+        if rec.status and rec.status.upper() != "SUCCESS":
+            stats["failures"] += 1
+        stats["roles"].add(rec.role_name)
+    return agent_stats
+
+
+def _agent_token_and_role_findings(agent_name: str, stats: dict) -> list[GovernanceFinding]:
+    """High token usage and multi-role usage for one agent."""
+    findings: list[GovernanceFinding] = []
+    # High token usage
+    if stats["total_tokens"] > 1_000_000:
+        findings.append(
+            GovernanceFinding(
+                category=GovernanceCategory.AGENT_USAGE,
+                severity=GovernanceSeverity.MEDIUM,
+                title=f"High token usage: {agent_name}",
+                description=(
+                    f"Agent '{agent_name}' consumed {stats['total_tokens']:,} tokens "
+                    f"across {stats['total_calls']} calls "
+                    f"({stats['total_credits']:.2f} credits)."
+                ),
+                agent_or_role=agent_name,
+                details={
+                    "total_calls": stats["total_calls"],
+                    "total_tokens": stats["total_tokens"],
+                    "total_credits": stats["total_credits"],
+                },
+            )
+        )
+
+    # Multi-role usage (agent running under multiple roles)
+    roles = stats["roles"] - {""}
+    if len(roles) > 1:
+        findings.append(
+            GovernanceFinding(
+                category=GovernanceCategory.AGENT_USAGE,
+                severity=GovernanceSeverity.HIGH,
+                title=f"Multi-role agent: {agent_name}",
+                description=(
+                    f"Agent '{agent_name}' ran under {len(roles)} different roles: {', '.join(sorted(roles))}. This increases blast radius."
+                ),
+                agent_or_role=agent_name,
+                details={"roles": sorted(roles)},
+            )
+        )
+    return findings
+
+
+def _agent_tool_and_failure_findings(agent_name: str, stats: dict) -> list[GovernanceFinding]:
+    """High tool-call volume and high failure rate for one agent."""
+    findings: list[GovernanceFinding] = []
+    # High tool call rate
+    if stats["total_tool_calls"] > 500:
+        findings.append(
+            GovernanceFinding(
+                category=GovernanceCategory.AGENT_USAGE,
+                severity=GovernanceSeverity.MEDIUM,
+                title=f"High tool usage: {agent_name}",
+                description=(
+                    f"Agent '{agent_name}' made {stats['total_tool_calls']} tool calls across {stats['total_calls']} invocations."
+                ),
+                agent_or_role=agent_name,
+                details={
+                    "total_tool_calls": stats["total_tool_calls"],
+                    "total_calls": stats["total_calls"],
+                },
+            )
+        )
+
+    # High failure rate
+    if stats["failures"] > 0 and stats["total_calls"] > 5:
+        failure_rate = stats["failures"] / stats["total_calls"]
+        if failure_rate > 0.3:
+            findings.append(
+                GovernanceFinding(
+                    category=GovernanceCategory.AGENT_USAGE,
+                    severity=GovernanceSeverity.MEDIUM,
+                    title=f"High failure rate: {agent_name}",
+                    description=(
+                        f"Agent '{agent_name}' has a {failure_rate:.0%} failure rate ({stats['failures']}/{stats['total_calls']} calls)."
+                    ),
+                    agent_or_role=agent_name,
+                    details={
+                        "failures": stats["failures"],
+                        "total_calls": stats["total_calls"],
+                        "failure_rate": round(failure_rate, 3),
+                    },
+                )
+            )
+    return findings
+
+
+def _find_agent_usage_anomalies(report: GovernanceReport) -> list[GovernanceFinding]:
+    """Analyze CORTEX_AGENT_USAGE_HISTORY for anomalies."""
+    findings: list[GovernanceFinding] = []
+
+    if not report.agent_usage:
+        return findings
+
+    for agent_name, stats in _aggregate_agent_usage(report).items():
+        findings.extend(_agent_token_and_role_findings(agent_name, stats))
+        findings.extend(_agent_tool_and_failure_findings(agent_name, stats))
+
+    return findings

@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from agent_bom.governance import (
+    AccessRecord,
     ActivityTimeline,
     AgentUsageRecord,
     DataClassification,
@@ -16,7 +17,14 @@ from agent_bom.governance import (
 )
 from agent_bom.security import sanitize_error
 
-from .snowflake_common import _coerce_snowflake_days, _env_or_value, _parse_json_object, _record_snowflake_inventory_failure, _sf
+from .snowflake_common import (
+    _coerce_snowflake_days,
+    _env_or_value,
+    _parse_json_field,
+    _parse_json_object,
+    _record_snowflake_inventory_failure,
+    _sf,
+)
 
 # Log under the façade's logger so existing log routing and filters keep applying.
 logger = logging.getLogger("agent_bom.cloud.snowflake")
@@ -464,3 +472,111 @@ def _classify_agent_query(query_text: str) -> tuple[bool, str]:
         if pattern.search(query_text):
             return True, label
     return False, ""
+
+
+def _append_access_records(records: list[AccessRecord], row_dict: dict[str, Any]) -> None:
+    """One ACCESS_HISTORY row → READ records (direct objects) then WRITE records (modified objects)."""
+    query_id = str(row_dict.get("query_id", ""))
+    user_name = str(row_dict.get("user_name", ""))
+    role_name = str(row_dict.get("role_name") or "")
+    query_start = str(row_dict.get("query_start_time", ""))
+
+    # Each is a JSON array of objects with objectName/objectDomain/columns.
+    direct_objects = _parse_json_field(row_dict.get("direct_objects_accessed", "[]"))
+    base_objects = _parse_json_field(row_dict.get("base_objects_accessed", "[]"))
+    objects_modified = _parse_json_field(row_dict.get("objects_modified", "[]"))
+
+    base_names = [b.get("objectName", "") for b in base_objects if b.get("objectName")]
+
+    for obj in direct_objects:
+        obj_name = obj.get("objectName", "")
+        obj_type = obj.get("objectDomain", "")
+        col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
+        if not obj_name:
+            continue
+
+        records.append(
+            AccessRecord(
+                query_id=query_id,
+                user_name=user_name,
+                role_name=role_name,
+                query_start=query_start,
+                object_name=obj_name,
+                object_type=obj_type,
+                columns=col_list,
+                operation="READ",
+                is_write=False,
+                base_objects=base_names,
+                source_field="direct_objects_accessed",
+            )
+        )
+
+    # A query can read and write the same object. Keep those observations
+    # separate, including their distinct column lists. These arrays do
+    # not establish the SQL verb, rows changed, or current authorization.
+    for obj in objects_modified:
+        obj_name = obj.get("objectName", "")
+        if not obj_name:
+            continue
+        col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
+        records.append(
+            AccessRecord(
+                query_id=query_id,
+                user_name=user_name,
+                role_name=role_name,
+                query_start=query_start,
+                object_name=obj_name,
+                object_type=obj.get("objectDomain", ""),
+                columns=col_list,
+                operation="WRITE",
+                is_write=True,
+                base_objects=base_names,
+                source_field="objects_modified",
+            )
+        )
+
+
+def _mine_access_history(
+    conn: Any,
+    days: int,
+) -> tuple[list[AccessRecord], list[str]]:
+    """Mine SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY for table/column access patterns.
+
+    Enterprise edition required. Returns up to 1000 most recent records.
+    """
+    records: list[AccessRecord] = []
+    warnings: list[str] = []
+    cursor = conn.cursor()
+    days = _coerce_snowflake_days(days)
+
+    try:
+        # ACCESS_HISTORY has no ROLE_NAME column; the executing role lives on
+        # QUERY_HISTORY, joined via query_id. The accessed/modified objects are
+        # VARIANT arrays (objectName/objectDomain/columns) parsed in Python below.
+        cursor.execute(
+            "SELECT ah.query_id, ah.user_name, qh.role_name, ah.query_start_time, "
+            "       ah.direct_objects_accessed, ah.base_objects_accessed, "
+            "       ah.objects_modified "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah "
+            "LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY qh "
+            "       ON ah.query_id = qh.query_id "
+            f"WHERE ah.query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
+            "ORDER BY ah.query_start_time DESC "
+            "LIMIT 1000"
+        )
+        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
+
+        for row in cursor.fetchall():
+            _append_access_records(records, dict(zip(columns, row)))
+
+    except Exception as exc:
+        msg = str(exc)
+        if "access_history" in msg.lower() or "enterprise" in msg.lower():
+            warnings.append("ACCESS_HISTORY requires Enterprise edition or higher. Skipping access pattern analysis.")
+        else:
+            warnings.append(f"Could not query ACCESS_HISTORY: {sanitize_error(exc)}")
+
+    finally:
+        cursor.close()
+
+    return records, warnings

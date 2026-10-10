@@ -41,21 +41,12 @@ from typing import Any
 
 from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode, attach_envelope_to_agents
-from agent_bom.governance import (
-    AccessRecord,
-    GovernanceCategory,
-    GovernanceFinding,
-    GovernanceReport,
-    GovernanceSeverity,
-)
-from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.governance import GovernanceReport
+from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
-from .normalization import (
-    build_cloud_origin,
-    build_package_purl,
-)
+from .normalization import build_cloud_origin
 from .snowflake_ai_surfaces import (
     _describe_mcp_server_tools as _describe_mcp_server_tools,
 )
@@ -171,6 +162,9 @@ from .snowflake_governance_findings import (
     _derive_findings as _derive_findings,
 )
 from .snowflake_governance_findings import (
+    _find_agent_usage_anomalies as _find_agent_usage_anomalies,
+)
+from .snowflake_governance_findings import (
     _find_elevated_privilege_risks as _find_elevated_privilege_risks,
 )
 from .snowflake_governance_findings import (
@@ -189,6 +183,9 @@ from .snowflake_governance_mining import (
     _classify_agent_query as _classify_agent_query,
 )
 from .snowflake_governance_mining import (
+    _mine_access_history as _mine_access_history,
+)
+from .snowflake_governance_mining import (
     _mine_cortex_agent_usage as _mine_cortex_agent_usage,
 )
 from .snowflake_governance_mining import (
@@ -205,6 +202,9 @@ from .snowflake_governance_mining import (
 )
 from .snowflake_governance_mining import (
     discover_activity as discover_activity,
+)
+from .snowflake_notebooks import (
+    _discover_snowflake_notebooks as _discover_snowflake_notebooks,
 )
 from .snowflake_object_graph import (
     _LIVE_GRANT_OBJECT_TYPES as _LIVE_GRANT_OBJECT_TYPES,
@@ -667,172 +667,6 @@ def discover(
     return agents, warnings
 
 
-def _discover_snowflake_notebooks(
-    conn: Any,
-    account: str,
-) -> tuple[list[Agent], list[str]]:
-    """Discover Snowflake Notebooks and extract AI/ML package usage.
-
-    Snowflake Notebooks run Python/SQL cells in a managed Snowpark environment.
-    They can import AI/ML libraries, call Cortex functions, and access external
-    stages — all supply chain vectors we need to inventory.
-    """
-    agents: list[Agent] = []
-    warnings: list[str] = []
-    cursor = conn.cursor()
-
-    # Known AI/ML packages to flag when found in notebook imports
-    _ai_ml_packages = {
-        "openai",
-        "anthropic",
-        "langchain",
-        "transformers",
-        "torch",
-        "tensorflow",
-        "keras",
-        "huggingface_hub",
-        "sentence_transformers",
-        "llama_index",
-        "vllm",
-        "triton",
-        "bitsandbytes",
-        "peft",
-        "trl",
-        "diffusers",
-        "autogen",
-        "crewai",
-        "dspy",
-        "guidance",
-        "promptflow",
-        "snowflake-ml-python",
-        "snowflake-snowpark-python",
-        "snowflake-cortex",
-    }
-
-    try:
-        cursor.execute("SHOW NOTEBOOKS IN ACCOUNT")
-        rows = cursor.fetchall()
-        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
-
-        for row in rows:
-            row_dict = dict(zip(columns, row)) if columns else {}
-            nb_name = row_dict.get("name", str(row[0]) if row else "unknown")
-            nb_db = row_dict.get("database_name", "")
-            nb_schema = row_dict.get("schema_name", "")
-            nb_owner = row_dict.get("owner", "")
-            nb_comment = row_dict.get("comment", "")
-
-            packages: list[Package] = []
-            tools: list[MCPTool] = []
-
-            # Try to extract notebook package dependencies from metadata
-            # Snowflake stores notebook runtime packages in INFORMATION_SCHEMA
-            try:
-                fqn = ".".join(_quote_sf_identifier(part) for part in (nb_db, nb_schema, nb_name))
-                cursor.execute(
-                    f"DESCRIBE NOTEBOOK {fqn}"  # noqa: S608
-                )
-                desc_rows = cursor.fetchall()
-                desc_cols = [d[0].lower() for d in cursor.description] if cursor.description else []
-                for d_row in desc_rows:
-                    d_dict = dict(zip(desc_cols, d_row)) if desc_cols else {}
-                    prop_name = str(d_dict.get("property", d_dict.get("name", ""))).lower()
-                    prop_val = str(d_dict.get("value", d_dict.get("property_value", "")))
-
-                    # Extract packages from PACKAGES property
-                    if "package" in prop_name and prop_val:
-                        for pkg_spec in prop_val.split(","):
-                            pkg_spec = pkg_spec.strip()
-                            if not pkg_spec:
-                                continue
-                            parts = pkg_spec.split("==") if "==" in pkg_spec else pkg_spec.split("=")
-                            pkg_name = parts[0].strip()
-                            pkg_version = parts[1].strip() if len(parts) > 1 else "unknown"
-                            packages.append(
-                                Package(
-                                    name=pkg_name,
-                                    version=pkg_version,
-                                    ecosystem="pypi",
-                                    purl=build_package_purl(ecosystem="pypi", name=pkg_name, version=pkg_version),
-                                )
-                            )
-                            # Flag AI/ML packages as tools for visibility
-                            if pkg_name.lower().replace("-", "_") in _ai_ml_packages:
-                                tools.append(
-                                    MCPTool(
-                                        name=f"ai-pkg:{pkg_name}",
-                                        description=f"AI/ML package {pkg_name}@{pkg_version} used in notebook",
-                                    )
-                                )
-
-                    # Check for Cortex function usage in notebook queries
-                    if "query" in prop_name and prop_val:
-                        cortex_funcs = [
-                            "cortex.complete",
-                            "cortex.embed",
-                            "cortex.sentiment",
-                            "cortex.summarize",
-                            "cortex.translate",
-                            "cortex.extract_answer",
-                        ]
-                        for func in cortex_funcs:
-                            if func.lower() in prop_val.lower():
-                                tools.append(
-                                    MCPTool(
-                                        name=f"cortex:{func.split('.')[-1]}",
-                                        description=f"Cortex AI function {func} called in notebook",
-                                    )
-                                )
-
-            except ValueError as exc:
-                warnings.append(f"Skipping Snowflake notebook with unsafe identifier: {sanitize_error(exc)}")
-            except Exception as exc:
-                warnings.append(f"Could not describe Snowflake notebook {nb_name!r}: {sanitize_error(exc)}")
-
-            server = MCPServer(
-                name=f"sf-notebook:{nb_name}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-                tools=tools,
-            )
-            agent = Agent(
-                name=f"sf-notebook:{nb_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"snowflake://{account}/{nb_db}/{nb_schema}/notebooks/{nb_name}",
-                source="snowflake-notebook",
-                metadata={
-                    "database": nb_db,
-                    "schema": nb_schema,
-                    "owner": nb_owner,
-                    "comment": nb_comment,
-                    "cloud_origin": _snowflake_cloud_origin(
-                        account=account,
-                        service="notebooks",
-                        resource_type="notebook",
-                        resource_id=f"{account}/{nb_db}/{nb_schema}/{nb_name}",
-                        resource_name=nb_name,
-                        database=nb_db,
-                        schema=nb_schema,
-                    ),
-                },
-                mcp_servers=[server],
-            )
-            agents.append(agent)
-
-    except Exception as exc:
-        msg = str(exc)
-        if "does not exist" in msg.lower() or "syntax error" in msg.lower():
-            # SHOW NOTEBOOKS not available on this Snowflake edition/version
-            warnings.append("Snowflake Notebooks discovery not available (requires Snowflake 2024.3+)")
-        else:
-            warnings.append(f"Could not list Snowflake Notebooks: {sanitize_error(exc)}")
-
-    finally:
-        cursor.close()
-
-    return agents, warnings
-
-
 # ---------------------------------------------------------------------------
 # Governance Discovery — ACCESS_HISTORY, GRANTS, TAG_REFERENCES, Agent Usage
 # ---------------------------------------------------------------------------
@@ -937,222 +771,6 @@ def discover_governance(
         conn.close()
 
     return report
-
-
-def _mine_access_history(
-    conn: Any,
-    days: int,
-) -> tuple[list[AccessRecord], list[str]]:
-    """Mine SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY for table/column access patterns.
-
-    Enterprise edition required. Returns up to 1000 most recent records.
-    """
-    records: list[AccessRecord] = []
-    warnings: list[str] = []
-    cursor = conn.cursor()
-    days = _coerce_snowflake_days(days)
-
-    try:
-        # ACCESS_HISTORY has no ROLE_NAME column; the executing role lives on
-        # QUERY_HISTORY, joined via query_id. The accessed/modified objects are
-        # VARIANT arrays (objectName/objectDomain/columns) parsed in Python below.
-        cursor.execute(
-            "SELECT ah.query_id, ah.user_name, qh.role_name, ah.query_start_time, "
-            "       ah.direct_objects_accessed, ah.base_objects_accessed, "
-            "       ah.objects_modified "
-            "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah "
-            "LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY qh "
-            "       ON ah.query_id = qh.query_id "
-            f"WHERE ah.query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
-            "ORDER BY ah.query_start_time DESC "
-            "LIMIT 1000"
-        )
-        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
-
-        for row in cursor.fetchall():
-            row_dict = dict(zip(columns, row))
-
-            query_id = str(row_dict.get("query_id", ""))
-            user_name = str(row_dict.get("user_name", ""))
-            role_name = str(row_dict.get("role_name") or "")
-            query_start = str(row_dict.get("query_start_time", ""))
-
-            # Each is a JSON array of objects with objectName/objectDomain/columns.
-            direct_objects = _parse_json_field(row_dict.get("direct_objects_accessed", "[]"))
-            base_objects = _parse_json_field(row_dict.get("base_objects_accessed", "[]"))
-            objects_modified = _parse_json_field(row_dict.get("objects_modified", "[]"))
-
-            base_names = [b.get("objectName", "") for b in base_objects if b.get("objectName")]
-
-            for obj in direct_objects:
-                obj_name = obj.get("objectName", "")
-                obj_type = obj.get("objectDomain", "")
-                col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
-                if not obj_name:
-                    continue
-
-                records.append(
-                    AccessRecord(
-                        query_id=query_id,
-                        user_name=user_name,
-                        role_name=role_name,
-                        query_start=query_start,
-                        object_name=obj_name,
-                        object_type=obj_type,
-                        columns=col_list,
-                        operation="READ",
-                        is_write=False,
-                        base_objects=base_names,
-                        source_field="direct_objects_accessed",
-                    )
-                )
-
-            # A query can read and write the same object. Keep those observations
-            # separate, including their distinct column lists. These arrays do
-            # not establish the SQL verb, rows changed, or current authorization.
-            for obj in objects_modified:
-                obj_name = obj.get("objectName", "")
-                if not obj_name:
-                    continue
-                col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
-                records.append(
-                    AccessRecord(
-                        query_id=query_id,
-                        user_name=user_name,
-                        role_name=role_name,
-                        query_start=query_start,
-                        object_name=obj_name,
-                        object_type=obj.get("objectDomain", ""),
-                        columns=col_list,
-                        operation="WRITE",
-                        is_write=True,
-                        base_objects=base_names,
-                        source_field="objects_modified",
-                    )
-                )
-
-    except Exception as exc:
-        msg = str(exc)
-        if "access_history" in msg.lower() or "enterprise" in msg.lower():
-            warnings.append("ACCESS_HISTORY requires Enterprise edition or higher. Skipping access pattern analysis.")
-        else:
-            warnings.append(f"Could not query ACCESS_HISTORY: {sanitize_error(exc)}")
-
-    finally:
-        cursor.close()
-
-    return records, warnings
-
-
-def _find_agent_usage_anomalies(report: GovernanceReport) -> list[GovernanceFinding]:
-    """Analyze CORTEX_AGENT_USAGE_HISTORY for anomalies."""
-    findings: list[GovernanceFinding] = []
-
-    if not report.agent_usage:
-        return findings
-
-    # Aggregate per agent
-    agent_stats: dict[str, dict] = {}
-    for rec in report.agent_usage:
-        stats = agent_stats.setdefault(
-            rec.agent_name,
-            {
-                "total_calls": 0,
-                "total_tokens": 0,
-                "total_credits": 0.0,
-                "total_tool_calls": 0,
-                "failures": 0,
-                "roles": set(),
-            },
-        )
-        stats["total_calls"] += 1
-        stats["total_tokens"] += rec.total_tokens
-        stats["total_credits"] += rec.credits_used
-        stats["total_tool_calls"] += rec.tool_calls
-        if rec.status and rec.status.upper() != "SUCCESS":
-            stats["failures"] += 1
-        stats["roles"].add(rec.role_name)
-
-    for agent_name, stats in agent_stats.items():
-        # High token usage
-        if stats["total_tokens"] > 1_000_000:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.AGENT_USAGE,
-                    severity=GovernanceSeverity.MEDIUM,
-                    title=f"High token usage: {agent_name}",
-                    description=(
-                        f"Agent '{agent_name}' consumed {stats['total_tokens']:,} tokens "
-                        f"across {stats['total_calls']} calls "
-                        f"({stats['total_credits']:.2f} credits)."
-                    ),
-                    agent_or_role=agent_name,
-                    details={
-                        "total_calls": stats["total_calls"],
-                        "total_tokens": stats["total_tokens"],
-                        "total_credits": stats["total_credits"],
-                    },
-                )
-            )
-
-        # Multi-role usage (agent running under multiple roles)
-        roles = stats["roles"] - {""}
-        if len(roles) > 1:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.AGENT_USAGE,
-                    severity=GovernanceSeverity.HIGH,
-                    title=f"Multi-role agent: {agent_name}",
-                    description=(
-                        f"Agent '{agent_name}' ran under {len(roles)} different roles: "
-                        f"{', '.join(sorted(roles))}. This increases blast radius."
-                    ),
-                    agent_or_role=agent_name,
-                    details={"roles": sorted(roles)},
-                )
-            )
-
-        # High tool call rate
-        if stats["total_tool_calls"] > 500:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.AGENT_USAGE,
-                    severity=GovernanceSeverity.MEDIUM,
-                    title=f"High tool usage: {agent_name}",
-                    description=(
-                        f"Agent '{agent_name}' made {stats['total_tool_calls']} tool calls across {stats['total_calls']} invocations."
-                    ),
-                    agent_or_role=agent_name,
-                    details={
-                        "total_tool_calls": stats["total_tool_calls"],
-                        "total_calls": stats["total_calls"],
-                    },
-                )
-            )
-
-        # High failure rate
-        if stats["failures"] > 0 and stats["total_calls"] > 5:
-            failure_rate = stats["failures"] / stats["total_calls"]
-            if failure_rate > 0.3:
-                findings.append(
-                    GovernanceFinding(
-                        category=GovernanceCategory.AGENT_USAGE,
-                        severity=GovernanceSeverity.MEDIUM,
-                        title=f"High failure rate: {agent_name}",
-                        description=(
-                            f"Agent '{agent_name}' has a {failure_rate:.0%} failure rate "
-                            f"({stats['failures']}/{stats['total_calls']} calls)."
-                        ),
-                        agent_or_role=agent_name,
-                        details={
-                            "failures": stats["failures"],
-                            "total_calls": stats["total_calls"],
-                            "failure_rate": round(failure_rate, 3),
-                        },
-                    )
-                )
-
-    return findings
 
 
 def _live_show_roles(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]]:

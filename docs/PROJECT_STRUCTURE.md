@@ -11,7 +11,8 @@ is intentionally broad—this map groups the breadth into owned subsystems.
 
 For the layered architecture and data-flow diagrams, see
 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md). For role-based entry paths, see
-[`docs/START_HERE.md`](START_HERE.md).
+[`docs/START_HERE.md`](START_HERE.md). For "which package does my change go
+in?", see [`docs/CODE_MAP.md`](CODE_MAP.md).
 
 ---
 

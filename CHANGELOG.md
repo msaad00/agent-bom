@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- The top-level module guard (`scripts/check_package_layout.py`) now names a likely subpackage for each new `src/agent_bom/*.py` file and points to the new `docs/CODE_MAP.md`, which maps common changes to their owning packages, canonical models and layering rules. The guard has its own regression test.
+- `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
+- The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
+
 ## [0.108.4] - 2026-10-09
 
 ### Fixed

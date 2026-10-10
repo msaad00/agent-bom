@@ -6,6 +6,8 @@ etc.) — not as another peer of the historical flat namespace. This check snaps
 the allowlisted basenames so the landfill cannot grow silently.
 
 Exit 0 when the tree matches the allowlist; exit 1 with a clear message otherwise.
+The allowlist only shrinks: moving a legacy module into a package removes its
+entry. ``docs/CODE_MAP.md`` tells contributors where new code goes.
 """
 
 from __future__ import annotations
@@ -268,33 +270,63 @@ ALLOWED_TOP_LEVEL_MODULES: frozenset[str] = frozenset(
 )
 
 
-def main() -> int:
-    if not PKG.is_dir():
-        print(f"error: package root missing: {PKG}", file=sys.stderr)
-        return 2
-    present = {p.name for p in PKG.glob("*.py")}
-    unexpected = sorted(present - ALLOWED_TOP_LEVEL_MODULES)
-    missing = sorted(ALLOWED_TOP_LEVEL_MODULES - present)
+# Prefix -> owning subpackage, used only to make the failure message concrete.
+# The full "where does my code go" guide is docs/CODE_MAP.md.
+PACKAGE_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("mcp_",), "mcp_tools/"),
+    (("proxy", "gateway", "firewall", "runtime", "shield"), "runtime/"),
+    (("graph",), "graph/"),
+    (("api_", "route"), "api/"),
+    (("cli_", "command"), "cli/"),
+    (("aws", "azure", "gcp", "cloud"), "cloud/"),
+    (("iac", "terraform", "helm", "k8s", "dockerfile"), "iac/"),
+    (("identity", "nhi", "okta", "entra"), "identity/"),
+    (("parse", "lockfile", "manifest"), "parsers/"),
+    (("scan", "advisory", "osv", "cve"), "scanners/"),
+    (("output", "format", "report", "sarif"), "output/"),
+    (("discover",), "discovery/"),
+    (("ast_", "sast"), "ast/"),
+    (("severity", "cvss", "version", "tenan"), "core/"),
+)
+CODE_MAP = "docs/CODE_MAP.md"
+
+
+def suggest_package(module: str) -> str:
+    """Return the subpackage a new top-level module most likely belongs in."""
+    name = module.lower()
+    for prefixes, package in PACKAGE_HINTS:
+        if any(name.startswith(prefix) for prefix in prefixes):
+            return f"src/agent_bom/{package}"
+    return f"the owning subpackage listed in {CODE_MAP}"
+
+
+def check(pkg: Path = PKG, allowed: frozenset[str] = ALLOWED_TOP_LEVEL_MODULES) -> tuple[int, list[str]]:
+    """Compare ``pkg/*.py`` with the allowlist; return (exit code, message lines)."""
+    if not pkg.is_dir():
+        return 2, [f"error: package root missing: {pkg}"]
+    present = {p.name for p in pkg.glob("*.py")}
+    unexpected = sorted(present - allowed)
+    missing = sorted(allowed - present)
     if unexpected:
-        print(
-            "error: new top-level module(s) under src/agent_bom/ — put them in a package (api/, graph/, runtime/, cloud/, …) instead:",
-            file=sys.stderr,
-        )
-        for name in unexpected:
-            print(f"  + {name}", file=sys.stderr)
-        return 1
+        lines = ["error: new top-level module(s) under src/agent_bom/. The flat namespace is frozen; add code to a subpackage instead:"]
+        lines += [f"  + {name}  -> try {suggest_package(name)}" for name in unexpected]
+        lines.append(f"See {CODE_MAP} for which subpackage owns what. Ask in the PR if none fits.")
+        return 1, lines
     if missing:
-        print(
+        lines = [
             "error: allowlisted top-level module(s) removed without updating "
             "scripts/check_package_layout.py (delete from ALLOWED_TOP_LEVEL_MODULES "
-            "in the same PR that removes the file):",
-            file=sys.stderr,
-        )
-        for name in missing:
-            print(f"  - {name}", file=sys.stderr)
-        return 1
-    print(f"ok: {len(present)} top-level src/agent_bom/*.py modules (frozen)")
-    return 0
+            "in the same PR that removes the file):"
+        ]
+        lines += [f"  - {name}" for name in missing]
+        return 1, lines
+    return 0, [f"ok: {len(present)} top-level src/agent_bom/*.py modules (frozen)"]
+
+
+def main() -> int:
+    code, lines = check()
+    print("\n".join(lines), file=sys.stderr if code else sys.stdout)
+    return code
 
 
 if __name__ == "__main__":

@@ -2,43 +2,27 @@
 
 from __future__ import annotations
 
-import base64
 import os
 from datetime import UTC, datetime
-from hashlib import sha256
 from types import SimpleNamespace
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable
 from urllib.parse import quote
 
 from agent_bom.cloud.authorization_evidence import EvidenceSourceState
 
 from .aws_inventory import is_access_denied_error, record_discovery_failure
+from .gcp_authorization_records import _deny_record, _get, _pab_binding_record, _pab_record, _policy_record, _role_record, _text
 
 _DEFAULT_MAX_RECORDS = int(os.environ.get("AGENT_BOM_GCP_AUTHORIZATION_MAX_RECORDS", "50000") or "50000")
 
-
-def _get(value: Any, name: str, default: Any = None) -> Any:
-    if isinstance(value, Mapping):
-        return value.get(name, default)
-    return getattr(value, name, default)
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _strings(value: Any) -> list[str]:
-    return sorted({_text(item) for item in (value or []) if _text(item)})
-
-
-def _ordered_strings(value: Any) -> list[str]:
-    return list(dict.fromkeys(_text(item) for item in (value or []) if _text(item)))
-
-
-def _etag(value: Any) -> str:
-    if isinstance(value, bytes):
-        return base64.b64encode(value).decode("ascii")
-    return _text(value)
+# Evidence sources in report order, with the read-only API calls backing each one.
+_SOURCE_PROVENANCE: dict[str, tuple[str, ...]] = {
+    "allow_policies": ("cloudasset.assets.list(IAM_POLICY)", "resourcemanager.getIamPolicy(version=3)"),
+    "role_definitions": ("iam.roles.get",),
+    "resource_hierarchy": ("resourcemanager.projects.get", "resourcemanager.folders.get"),
+    "deny_policies": ("iam.v2.policies.list",),
+    "principal_access_boundaries": ("iam.v3.principalAccessBoundaryPolicies.list", "iam.v3.policyBindings.list"),
+}
 
 
 def _source(
@@ -63,137 +47,6 @@ def _bounded(values: Iterable[Any], maximum: int) -> tuple[list[Any], bool]:
             return records, True
         records.append(value)
     return records, False
-
-
-def _condition(value: Any) -> dict[str, Any] | None:
-    expression = _text(_get(value, "expression"))
-    if not expression:
-        return None
-    return {
-        "expression": expression,
-        "title": _text(_get(value, "title")),
-        "description": _text(_get(value, "description")),
-        "location": _text(_get(value, "location")),
-    }
-
-
-def _bindings(policy: Any, resource: str) -> tuple[list[dict[str, Any]], int]:
-    bindings: list[dict[str, Any]] = []
-    dropped = 0
-    for raw in _get(policy, "bindings", []) or []:
-        role = _text(_get(raw, "role"))
-        members = _strings(_get(raw, "members", []))
-        if not role or not members:
-            dropped += 1
-            continue
-        condition = _condition(_get(raw, "condition"))
-        digest = sha256("\x1f".join((resource, role, *members, condition["expression"] if condition else "")).encode()).hexdigest()[:24]
-        bindings.append(
-            {
-                "id": f"gcp:iam-binding:{digest}",
-                "role": role,
-                "members": members,
-                "condition": condition,
-            }
-        )
-    return sorted(bindings, key=lambda item: item["id"]), dropped
-
-
-def _policy_record(resource: str, policy: Any, *, asset_type: str, ancestors: Any = None) -> dict[str, Any]:
-    bindings, dropped = _bindings(policy, resource)
-    return {
-        "resource": resource,
-        "asset_type": asset_type,
-        "ancestors": _ordered_strings(ancestors),
-        "version": int(_get(policy, "version", 0) or 0),
-        "etag": _etag(_get(policy, "etag")),
-        "bindings": bindings,
-        "dropped_bindings": dropped,
-    }
-
-
-def _role_record(role: Any, role_id: str) -> dict[str, Any]:
-    stage = _text(_get(role, "stage"))
-    deleted = bool(_get(role, "deleted", False))
-    disabled = stage.casefold() == "disabled"
-    return {
-        "id": _text(_get(role, "name")) or role_id,
-        "title": _text(_get(role, "title")),
-        "description": _text(_get(role, "description")),
-        "stage": stage,
-        "deleted": deleted,
-        "permissions": [] if deleted or disabled else _strings(_get(role, "included_permissions", [])),
-        "completeness": (EvidenceSourceState.UNAVAILABLE.value if deleted or disabled else EvidenceSourceState.COMPLETE.value),
-        "diagnostics": [item for item, applies in (("role_deleted", deleted), ("role_disabled", disabled)) if applies],
-    }
-
-
-def _deny_rule(rule: Any) -> dict[str, Any] | None:
-    denied_principals = _strings(_get(rule, "denied_principals", []))
-    denied_permissions = _strings(_get(rule, "denied_permissions", []))
-    if not denied_principals or not denied_permissions:
-        return None
-    return {
-        "denied_principals": denied_principals,
-        "exception_principals": _strings(_get(rule, "exception_principals", [])),
-        "denied_permissions": denied_permissions,
-        "exception_permissions": _strings(_get(rule, "exception_permissions", [])),
-        "condition": _condition(_get(rule, "denial_condition")),
-    }
-
-
-def _deny_record(policy: Any, attachment_point: str) -> tuple[dict[str, Any] | None, int]:
-    rules: list[dict[str, Any]] = []
-    dropped = 0
-    for wrapper in _get(policy, "rules", []) or []:
-        rule = _get(wrapper, "deny_rule", wrapper)
-        normalized = _deny_rule(rule)
-        if normalized is None:
-            dropped += 1
-        else:
-            rules.append(normalized)
-    name = _text(_get(policy, "name"))
-    if not name or not rules:
-        return None, max(1, dropped)
-    return {
-        "name": name,
-        "uid": _text(_get(policy, "uid")),
-        "display_name": _text(_get(policy, "display_name")),
-        "attachment_point": attachment_point,
-        "rules": rules,
-    }, dropped
-
-
-def _pab_record(policy: Any) -> dict[str, Any]:
-    details = _get(policy, "details")
-    rules = [
-        {
-            "description": _text(_get(rule, "description")),
-            "resources": _strings(_get(rule, "resources", [])),
-            "effect": _text(_get(rule, "effect")),
-        }
-        for rule in (_get(details, "rules", []) or [])
-    ]
-    return {
-        "name": _text(_get(policy, "name")),
-        "uid": _text(_get(policy, "uid")),
-        "display_name": _text(_get(policy, "display_name")),
-        "enforcement_version": _text(_get(details, "enforcement_version")),
-        "rules": rules,
-    }
-
-
-def _pab_binding_record(binding: Any) -> dict[str, Any]:
-    target = _get(binding, "target")
-    return {
-        "name": _text(_get(binding, "name")),
-        "uid": _text(_get(binding, "uid")),
-        "target": _text(_get(target, "principal_set")),
-        "policy_kind": _text(_get(binding, "policy_kind")),
-        "policy": _text(_get(binding, "policy")),
-        "policy_uid": _text(_get(binding, "policy_uid")),
-        "condition": _condition(_get(binding, "condition")),
-    }
 
 
 def _client_class(module: Any, attribute: str) -> Any:
@@ -253,47 +106,44 @@ def _merge_state(current: EvidenceSourceState, incoming: EvidenceSourceState) ->
     return incoming if severity[incoming] > severity[current] else current
 
 
-def collect_gcp_authorization(
-    credentials: Any,
-    project_id: str,
-    *,
-    clients: Any = None,
+def _record_failure(
+    exc: BaseException,
+    resource_type: str,
+    permission: str,
     warnings: list[str],
-    missing: list[dict[str, str]] | None = None,
-    max_records: int | None = None,
-) -> dict[str, Any]:
-    """Collect pageable allow, role, deny, hierarchy, and PAB evidence."""
-    maximum = _DEFAULT_MAX_RECORDS if max_records is None else max_records
-    if maximum < 1:
-        raise ValueError("max_records must be at least 1")
-    observed_at = datetime.now(UTC).isoformat()
-    if clients is None:
-        try:
-            clients = _load_clients(credentials)
-        except ImportError:
-            warnings.append("GCP IAM evidence SDKs are incomplete. Install with: pip install 'agent-bom[gcp]'")
-            return {
-                "iam_observed_at": observed_at,
-                "iam_scope": f"projects/{project_id}",
-                "iam_hierarchy": [f"projects/{project_id}"],
-                "allow_policies": [],
-                "role_definitions": [],
-                "deny_policies": [],
-                "pab_policies": [],
-                "pab_bindings": [],
-                "iam_sources": [
-                    _source(name, EvidenceSourceState.SDK_MISSING)
-                    for name in (
-                        "allow_policies",
-                        "role_definitions",
-                        "resource_hierarchy",
-                        "deny_policies",
-                        "principal_access_boundaries",
-                    )
-                ],
-            }
+    missing: list[dict[str, str]] | None,
+) -> None:
+    record_discovery_failure(
+        exc=exc,
+        resource_type=resource_type,
+        permission=permission,
+        cloud="gcp",
+        warnings=warnings,
+        missing=missing,
+    )
 
-    requested_project_scope = f"projects/{project_id}"
+
+def _sdk_missing_result(project_id: str, observed_at: str) -> dict[str, Any]:
+    return {
+        "iam_observed_at": observed_at,
+        "iam_scope": f"projects/{project_id}",
+        "iam_hierarchy": [f"projects/{project_id}"],
+        "allow_policies": [],
+        "role_definitions": [],
+        "deny_policies": [],
+        "pab_policies": [],
+        "pab_bindings": [],
+        "iam_sources": [_source(name, EvidenceSourceState.SDK_MISSING) for name in _SOURCE_PROVENANCE],
+    }
+
+
+def _collect_hierarchy(
+    clients: Any,
+    requested_project_scope: str,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[str, list[str], EvidenceSourceState, list[str]]:
+    """Resolve the canonical project scope and walk its folder/organization ancestry."""
     project_scope = requested_project_scope
     hierarchy = [project_scope]
     hierarchy_state = EvidenceSourceState.COMPLETE
@@ -322,15 +172,18 @@ def collect_gcp_authorization(
     except Exception as exc:  # noqa: BLE001
         hierarchy_state = _failure_state(exc)
         hierarchy_diagnostics.append(type(exc).__name__)
-        record_discovery_failure(
-            exc=exc,
-            resource_type="GCP resource hierarchy",
-            permission="resourcemanager.projects.get",
-            cloud="gcp",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "GCP resource hierarchy", "resourcemanager.projects.get", warnings, missing)
+    return project_scope, hierarchy, hierarchy_state, hierarchy_diagnostics
 
+
+def _collect_asset_policies(
+    clients: Any,
+    requested_project_scope: str,
+    maximum: int,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, Any]], EvidenceSourceState, list[str], int]:
+    """Page resource-local allow policies from Cloud Asset Inventory, capped at ``maximum``."""
     allow_policies: dict[str, dict[str, Any]] = {}
     allow_state = EvidenceSourceState.COMPLETE
     allow_diagnostics: list[str] = []
@@ -366,15 +219,22 @@ def collect_gcp_authorization(
     except Exception as exc:  # noqa: BLE001
         allow_state = _failure_state(exc)
         allow_diagnostics.append(type(exc).__name__)
-        record_discovery_failure(
-            exc=exc,
-            resource_type="GCP resource-local IAM policies",
-            permission="cloudasset.assets.listIamPolicy",
-            cloud="gcp",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "GCP resource-local IAM policies", "cloudasset.assets.listIamPolicy", warnings, missing)
+    return allow_policies, allow_state, allow_diagnostics, dropped_allow_records
 
+
+def _collect_hierarchy_policies(
+    clients: Any,
+    hierarchy: list[str],
+    allow_policies: dict[str, dict[str, Any]],
+    allow_state: EvidenceSourceState,
+    hierarchy_state: EvidenceSourceState,
+    allow_diagnostics: list[str],
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[EvidenceSourceState, EvidenceSourceState, int, bool]:
+    """Read the version-3 allow policy of every project/folder/organization ancestor."""
+    dropped_allow_records = 0
     hierarchy_policy_failed = False
     for scope in hierarchy:
         try:
@@ -395,14 +255,29 @@ def collect_gcp_authorization(
                 allow_state = state
             hierarchy_state = state
             allow_diagnostics.append(f"unreadable hierarchy policy: {scope}")
-            record_discovery_failure(
-                exc=exc,
-                resource_type=f"GCP IAM policy for {scope}",
-                permission=f"resourcemanager.{scope.split('/', 1)[0]}.getIamPolicy",
-                cloud="gcp",
-                warnings=warnings,
-                missing=missing,
-            )
+            permission = f"resourcemanager.{scope.split('/', 1)[0]}.getIamPolicy"
+            _record_failure(exc, f"GCP IAM policy for {scope}", permission, warnings, missing)
+    return allow_state, hierarchy_state, dropped_allow_records, hierarchy_policy_failed
+
+
+def _collect_allow_evidence(
+    clients: Any,
+    requested_project_scope: str,
+    hierarchy: list[str],
+    hierarchy_state: EvidenceSourceState,
+    hierarchy_diagnostics: list[str],
+    maximum: int,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, Any]], EvidenceSourceState, list[str], EvidenceSourceState]:
+    """Collect resource-local and inherited allow policies and grade their completeness."""
+    allow_policies, allow_state, allow_diagnostics, dropped_allow_records = _collect_asset_policies(
+        clients, requested_project_scope, maximum, warnings, missing
+    )
+    allow_state, hierarchy_state, dropped_hierarchy_records, hierarchy_policy_failed = _collect_hierarchy_policies(
+        clients, hierarchy, allow_policies, allow_state, hierarchy_state, allow_diagnostics, warnings, missing
+    )
+    dropped_allow_records += dropped_hierarchy_records
     if hierarchy_state is not EvidenceSourceState.COMPLETE and allow_state is EvidenceSourceState.COMPLETE:
         allow_state = hierarchy_state
         allow_diagnostics.append("parent hierarchy unavailable; inherited allow policies may be missing")
@@ -411,7 +286,17 @@ def collect_gcp_authorization(
         allow_diagnostics.append(f"dropped {dropped_allow_records} malformed allow policy records")
     if hierarchy_policy_failed:
         hierarchy_diagnostics.append("one or more hierarchy policies were unavailable")
+    return allow_policies, allow_state, allow_diagnostics, hierarchy_state
 
+
+def _collect_role_definitions(
+    clients: Any,
+    allow_policies: dict[str, dict[str, Any]],
+    allow_state: EvidenceSourceState,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[list[dict[str, Any]], EvidenceSourceState, list[str]]:
+    """Resolve every role referenced by an allow binding into its permission set."""
     role_ids = sorted(
         {binding["role"] for policy in allow_policies.values() for binding in policy["bindings"]},
         key=str.casefold,
@@ -431,15 +316,19 @@ def collect_gcp_authorization(
             elif role_state is EvidenceSourceState.COMPLETE:
                 role_state = EvidenceSourceState.PARTIAL
             role_diagnostics.append(f"unresolved role definition: {role_id}")
-            record_discovery_failure(
-                exc=exc,
-                resource_type="GCP IAM role definition",
-                permission="iam.roles.get",
-                cloud="gcp",
-                warnings=warnings,
-                missing=missing,
-            )
+            _record_failure(exc, "GCP IAM role definition", "iam.roles.get", warnings, missing)
+    return roles, role_state, role_diagnostics
 
+
+def _collect_deny_policies(
+    clients: Any,
+    hierarchy: list[str],
+    hierarchy_state: EvidenceSourceState,
+    maximum: int,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, Any]], EvidenceSourceState, list[str]]:
+    """Page IAM v2 deny policies attached at each hierarchy level, capped at ``maximum``."""
     deny_state = EvidenceSourceState.COMPLETE
     deny_diagnostics: list[str] = []
     deny_records: dict[str, dict[str, Any]] = {}
@@ -464,14 +353,7 @@ def collect_gcp_authorization(
             if state is EvidenceSourceState.ACCESS_DENIED or deny_state is EvidenceSourceState.COMPLETE:
                 deny_state = state
             deny_diagnostics.append(f"unreadable deny policies: {scope}")
-            record_discovery_failure(
-                exc=exc,
-                resource_type=f"GCP deny policies for {scope}",
-                permission="iam.denypolicies.list",
-                cloud="gcp",
-                warnings=warnings,
-                missing=missing,
-            )
+            _record_failure(exc, f"GCP deny policies for {scope}", "iam.denypolicies.list", warnings, missing)
     deny_state = _merge_state(deny_state, hierarchy_state)
     if malformed_deny_rules and deny_state is EvidenceSourceState.COMPLETE:
         deny_state = EvidenceSourceState.PARTIAL
@@ -479,11 +361,20 @@ def collect_gcp_authorization(
         deny_diagnostics.append(f"dropped {malformed_deny_rules} malformed deny {suffix}")
     if hierarchy_state is not EvidenceSourceState.COMPLETE:
         deny_diagnostics.append("parent hierarchy unavailable; inherited deny policies may be missing")
+    return deny_records, deny_state, deny_diagnostics
 
+
+def _collect_pab_policies(
+    clients: Any,
+    hierarchy: list[str],
+    maximum: int,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, Any]], EvidenceSourceState, list[str]]:
+    """Page organization-level principal access boundary policies, capped at ``maximum``."""
     pab_state = EvidenceSourceState.COMPLETE
     pab_diagnostics: list[str] = []
     pab_records: dict[str, dict[str, Any]] = {}
-    pab_bindings: dict[str, dict[str, Any]] = {}
     organization_scope = next((scope for scope in hierarchy if scope.startswith("organizations/")), "")
     if organization_scope:
         try:
@@ -499,14 +390,22 @@ def collect_gcp_authorization(
         except Exception as exc:  # noqa: BLE001
             pab_state = _failure_state(exc)
             pab_diagnostics.append("PAB policy list unavailable")
-            record_discovery_failure(
-                exc=exc,
-                resource_type="GCP principal access boundary policies",
-                permission="iam.principalaccessboundarypolicies.list",
-                cloud="gcp",
-                warnings=warnings,
-                missing=missing,
-            )
+            permission = "iam.principalaccessboundarypolicies.list"
+            _record_failure(exc, "GCP principal access boundary policies", permission, warnings, missing)
+    return pab_records, pab_state, pab_diagnostics
+
+
+def _collect_pab_bindings(
+    clients: Any,
+    hierarchy: list[str],
+    maximum: int,
+    pab_state: EvidenceSourceState,
+    pab_diagnostics: list[str],
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, Any]], EvidenceSourceState]:
+    """Page IAM v3 policy bindings at each hierarchy level, capped at ``maximum``."""
+    pab_bindings: dict[str, dict[str, Any]] = {}
     for scope in hierarchy:
         try:
             for binding in clients.policy_bindings.list_policy_bindings(
@@ -523,21 +422,70 @@ def collect_gcp_authorization(
             if state is EvidenceSourceState.ACCESS_DENIED or pab_state is EvidenceSourceState.COMPLETE:
                 pab_state = state
             pab_diagnostics.append(f"PAB bindings unavailable: {scope}")
-            record_discovery_failure(
-                exc=exc,
-                resource_type=f"GCP policy bindings for {scope}",
-                permission="iam.policybindings.list",
-                cloud="gcp",
-                warnings=warnings,
-                missing=missing,
-            )
+            _record_failure(exc, f"GCP policy bindings for {scope}", "iam.policybindings.list", warnings, missing)
+    return pab_bindings, pab_state
+
+
+def _collect_pab_evidence(
+    clients: Any,
+    hierarchy: list[str],
+    hierarchy_state: EvidenceSourceState,
+    maximum: int,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], EvidenceSourceState, list[str]]:
+    """Collect PAB policies and bindings and grade their completeness."""
+    pab_records, pab_state, pab_diagnostics = _collect_pab_policies(clients, hierarchy, maximum, warnings, missing)
+    pab_bindings, pab_state = _collect_pab_bindings(clients, hierarchy, maximum, pab_state, pab_diagnostics, warnings, missing)
     pab_state = _merge_state(pab_state, hierarchy_state)
     if hierarchy_state is not EvidenceSourceState.COMPLETE:
         pab_diagnostics.append("parent hierarchy unavailable; organization PAB evidence may be missing")
     if pab_state is EvidenceSourceState.COMPLETE and (pab_records or pab_bindings):
         pab_state = EvidenceSourceState.PARTIAL
         pab_diagnostics.append("PAB evidence is preserved but target principal sets are not resolved")
+    return pab_records, pab_bindings, pab_state, pab_diagnostics
 
+
+def collect_gcp_authorization(
+    credentials: Any,
+    project_id: str,
+    *,
+    clients: Any = None,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+    max_records: int | None = None,
+) -> dict[str, Any]:
+    """Collect pageable allow, role, deny, hierarchy, and PAB evidence."""
+    maximum = _DEFAULT_MAX_RECORDS if max_records is None else max_records
+    if maximum < 1:
+        raise ValueError("max_records must be at least 1")
+    observed_at = datetime.now(UTC).isoformat()
+    if clients is None:
+        try:
+            clients = _load_clients(credentials)
+        except ImportError:
+            warnings.append("GCP IAM evidence SDKs are incomplete. Install with: pip install 'agent-bom[gcp]'")
+            return _sdk_missing_result(project_id, observed_at)
+
+    requested_project_scope = f"projects/{project_id}"
+    project_scope, hierarchy, hierarchy_state, hierarchy_diagnostics = _collect_hierarchy(
+        clients, requested_project_scope, warnings, missing
+    )
+    allow_policies, allow_state, allow_diagnostics, hierarchy_state = _collect_allow_evidence(
+        clients, requested_project_scope, hierarchy, hierarchy_state, hierarchy_diagnostics, maximum, warnings, missing
+    )
+    roles, role_state, role_diagnostics = _collect_role_definitions(clients, allow_policies, allow_state, warnings, missing)
+    deny_records, deny_state, deny_diagnostics = _collect_deny_policies(clients, hierarchy, hierarchy_state, maximum, warnings, missing)
+    pab_records, pab_bindings, pab_state, pab_diagnostics = _collect_pab_evidence(
+        clients, hierarchy, hierarchy_state, maximum, warnings, missing
+    )
+    source_states = {
+        "allow_policies": (allow_state, allow_diagnostics),
+        "role_definitions": (role_state, role_diagnostics),
+        "resource_hierarchy": (hierarchy_state, hierarchy_diagnostics),
+        "deny_policies": (deny_state, deny_diagnostics),
+        "principal_access_boundaries": (pab_state, pab_diagnostics),
+    }
     return {
         "iam_observed_at": observed_at,
         "iam_scope": project_scope,
@@ -548,36 +496,8 @@ def collect_gcp_authorization(
         "pab_policies": sorted(pab_records.values(), key=lambda item: item["name"]),
         "pab_bindings": sorted(pab_bindings.values(), key=lambda item: item["name"]),
         "iam_sources": [
-            _source(
-                "allow_policies",
-                allow_state,
-                diagnostics=allow_diagnostics,
-                provenance=("cloudasset.assets.list(IAM_POLICY)", "resourcemanager.getIamPolicy(version=3)"),
-            ),
-            _source(
-                "role_definitions",
-                role_state,
-                diagnostics=role_diagnostics,
-                provenance=("iam.roles.get",),
-            ),
-            _source(
-                "resource_hierarchy",
-                hierarchy_state,
-                diagnostics=hierarchy_diagnostics,
-                provenance=("resourcemanager.projects.get", "resourcemanager.folders.get"),
-            ),
-            _source(
-                "deny_policies",
-                deny_state,
-                diagnostics=deny_diagnostics,
-                provenance=("iam.v2.policies.list",),
-            ),
-            _source(
-                "principal_access_boundaries",
-                pab_state,
-                diagnostics=pab_diagnostics,
-                provenance=("iam.v3.principalAccessBoundaryPolicies.list", "iam.v3.policyBindings.list"),
-            ),
+            _source(name, state, diagnostics=diagnostics, provenance=_SOURCE_PROVENANCE[name])
+            for name, (state, diagnostics) in source_states.items()
         ],
     }
 

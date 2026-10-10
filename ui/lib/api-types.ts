@@ -1,6 +1,8 @@
 import type { components } from "./api-schema.generated";
 
 type ApiSchemas = components["schemas"];
+export type GraphCompromiseRequest = ApiSchemas["GraphCompromiseRequest"];
+export type GraphCompromiseResponse = ApiSchemas["GraphCompromiseResponse"];
 /** A generated response envelope whose row fields keep the narrower hand-written row types. */
 type ContractEnvelope<T, Rows> = { [K in keyof T as K extends keyof Rows ? never : K]: T[K] } & Rows;
 

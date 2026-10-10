@@ -7,7 +7,7 @@ Start with:
 
 Default: 8 focused tools; select a task profile with --profile.
 
-Full profile Tools (88):
+Full profile Tools (89):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel

@@ -551,6 +551,7 @@ jobs:
           --with mkdocs-material==9.7.5
           --with mkdocstrings==1.0.3
           --with mkdocstrings-python==2.0.3
+          --with pymdown-extensions==11.0.2
           mkdocs build --strict
 
   ui:
@@ -1055,6 +1056,9 @@ jobs:
             tests/test_ci_workflow_contract.py
             tests/test_doc_architecture_svgs.py
             tests/test_public_frontdoor_contract.py
+            tests/test_public_release_contracts.py
+            tests/test_cli_cold_start.py
+            tests/test_docs_toolchain.py
             tests/test_public_docs_cli_alignment.py
             tests/test_readme_demo_excerpt.py
             tests/test_cli_entry_points.py

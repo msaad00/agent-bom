@@ -60,7 +60,7 @@ claude mcp add agent-bom -- uvx agent-bom mcp server
 ## What users get inside Claude
 
 `agent-bom mcp server` starts with 8 focused tools. Use `--profile graph`, `cloud`, `runtime`, or `audit`
-for specialized work. The explicit `--profile full` compatibility catalog contains 88 MCP tools for:
+for specialized work. The explicit `--profile full` compatibility catalog contains 89 MCP tools for:
 
 - agent and MCP discovery
 - package and registry checks

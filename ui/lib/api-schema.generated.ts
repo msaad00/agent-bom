@@ -4304,6 +4304,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/graph/compromise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Graph Compromise
+         * @description Assess explicit control assumptions against one authorized immutable revision.
+         */
+        post: operations["post_graph_compromise_v1_graph_compromise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/graph/correlations": {
         parameters: {
             query?: never;
@@ -9794,6 +9814,49 @@ export interface components {
             /** Tools */
             tools?: string[];
         };
+        /** CompromiseAction */
+        CompromiseAction: {
+            /** Action */
+            action?: string | null;
+            /** Binding Ids */
+            binding_ids?: string[];
+            /**
+             * Observation
+             * @default not_recorded
+             * @enum {string}
+             */
+            observation: "attempt_recorded" | "blocked_attempt" | "failed_attempt" | "not_recorded";
+            /** Observed At */
+            observed_at?: string | null;
+            /**
+             * Permission
+             * @default unknown
+             * @enum {string}
+             */
+            permission: "supported_at_collection" | "denied_at_collection" | "unknown";
+            /** Principal Id */
+            principal_id?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Reason Codes */
+            reason_codes?: string[];
+            /** Relationship */
+            relationship: string;
+            /** Resource */
+            resource?: string | null;
+            /** Runtime References */
+            runtime_references?: {
+                [key: string]: string;
+            }[];
+            /** Source Edge Id */
+            source_edge_id: string;
+            /** Source Node Id */
+            source_node_id: string;
+            /** Source Snapshot Id */
+            source_snapshot_id: string;
+            /** Target Node Id */
+            target_node_id: string;
+        };
         /** Connection */
         Connection: {
             /** Account Id */
@@ -12049,6 +12112,106 @@ export interface components {
             status: "complete" | "sampled" | "truncated";
             /** Total */
             total?: number | null;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** GraphCompromiseRequest */
+        GraphCompromiseRequest: {
+            /** Affected Node Id */
+            affected_node_id?: string | null;
+            /**
+             * Assume Control
+             * @constant
+             */
+            assume_control: true;
+            /**
+             * Assume Exploitation
+             * @default false
+             */
+            assume_exploitation: boolean;
+            /**
+             * Max Evidence Age Seconds
+             * @default 3600
+             */
+            max_evidence_age_seconds: number;
+            /**
+             * Max Relationships
+             * @default 128
+             */
+            max_relationships: number;
+            /** Root Node Id */
+            root_node_id: string;
+            /** Scan Id */
+            scan_id: string;
+            /** Snapshot Generation */
+            snapshot_generation?: string | null;
+        };
+        /** GraphCompromiseResponse */
+        GraphCompromiseResponse: {
+            /** Actions */
+            actions: components["schemas"]["CompromiseAction"][];
+            /** Assessed At */
+            assessed_at: string;
+            /** Assumed Control Node Id */
+            assumed_control_node_id: string;
+            /**
+             * Collection Coverage
+             * @default unknown
+             * @constant
+             */
+            collection_coverage: "unknown";
+            /**
+             * Collector Independence
+             * @default not_assessed
+             * @constant
+             */
+            collector_independence: "not_assessed";
+            /**
+             * Current Access
+             * @default not_evaluated
+             * @constant
+             */
+            current_access: "not_evaluated";
+            /**
+             * Execution
+             * @default not_established
+             * @constant
+             */
+            execution: "not_established";
+            /**
+             * Exploitation
+             * @default not_evaluated
+             * @enum {string}
+             */
+            exploitation: "not_evaluated" | "assumed_not_verified";
+            /** Max Evidence Age Seconds */
+            max_evidence_age_seconds: number;
+            /** Max Relationships */
+            max_relationships: number;
+            /** Reason Codes */
+            reason_codes: string[];
+            /** Relationships Examined */
+            relationships_examined: number;
+            /** Root Node Id */
+            root_node_id: string;
+            /** Scan Id */
+            scan_id: string;
+            /**
+             * Schema Version
+             * @default compromise.direct.v1
+             * @constant
+             */
+            schema_version: "compromise.direct.v1";
+            /**
+             * Scope
+             * @default direct_outgoing_relationships
+             * @constant
+             */
+            scope: "direct_outgoing_relationships";
+            /** Snapshot Generation */
+            snapshot_generation: string;
+            /** Tenant Id */
+            tenant_id: string;
             /** Truncated */
             truncated: boolean;
         };
@@ -25523,6 +25686,48 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Client error envelope. Codes: 400 BAD_REQUEST, 401 AUTH_FAILED, 403 FORBIDDEN, 404 NOT_FOUND, 405 METHOD_NOT_ALLOWED, 409 CONFLICT, 413 PAYLOAD_TOO_LARGE, 415 UNSUPPORTED_MEDIA_TYPE, 422 VALIDATION_ERROR, 429 RATE_LIMITED */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server error envelope (INTERNAL_ERROR, SERVICE_UNAVAILABLE) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    post_graph_compromise_v1_graph_compromise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphCompromiseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphCompromiseResponse"];
                 };
             };
             /** @description Client error envelope. Codes: 400 BAD_REQUEST, 401 AUTH_FAILED, 403 FORBIDDEN, 404 NOT_FOUND, 405 METHOD_NOT_ALLOWED, 409 CONFLICT, 413 PAYLOAD_TOO_LARGE, 415 UNSUPPORTED_MEDIA_TYPE, 422 VALIDATION_ERROR, 429 RATE_LIMITED */

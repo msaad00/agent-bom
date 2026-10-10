@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Loader2, Network, Radar, ShieldAlert } from "lucide-react";
 
 import { GraphRecordedRelationships, GraphRecordedRelationshipScope } from "@/components/graph-recorded-relationships";
+import { GraphCompromisePanel } from "@/components/graph-compromise-panel";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import type { LineageNodeData } from "@/components/lineage-nodes";
 import { api } from "@/lib/api";
@@ -131,6 +132,7 @@ export function GraphEntityDrawer({
   const missingLocationFields = locationFields.filter(([, value]) => !value).map(([label]) => label.toLowerCase());
   const headerSlot = (
     <div className="space-y-2 rounded-lg border border-outline bg-surface-muted px-3 py-2">
+      {enrich && scanId && nodeId && <GraphCompromisePanel nodeId={nodeId} scanId={scanId} snapshotGeneration={detail?.snapshot_generation} findingRoot={["vulnerability", "misconfiguration", "driftIncident"].includes(enriched.nodeType)} />}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="rounded border border-outline px-1.5 py-0.5 font-mono text-ink-secondary">
           {layer.label}

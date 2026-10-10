@@ -143,8 +143,8 @@ Run the pilot from a release tag checkout and set `AGENT_BOM_IMAGE_TAG` to that
 tag, so the containers run the same release as the checked-out files:
 
 ```bash
-git clone --depth 1 --branch v0.108.3 https://github.com/msaad00/agent-bom.git && cd agent-bom
-AGENT_BOM_IMAGE_TAG=0.108.3 scripts/deploy/install.sh pilot
+git clone --depth 1 --branch v0.108.4 https://github.com/msaad00/agent-bom.git && cd agent-bom
+AGENT_BOM_IMAGE_TAG=0.108.4 scripts/deploy/install.sh pilot
 # Dashboard → http://localhost:3000
 # API       → http://localhost:8422/docs
 ```

@@ -321,7 +321,7 @@ Install:
 
 ```bash
 helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
-  --version 0.108.3 \
+  --version 0.108.4 \
   -n agent-bom --create-namespace \
   -f values.agent-bom.yaml
 ```
@@ -393,7 +393,7 @@ Then install:
 
 ```bash
 helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
-  --version 0.108.3 \
+  --version 0.108.4 \
   -n agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml
 ```

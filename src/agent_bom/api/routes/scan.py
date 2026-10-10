@@ -2791,7 +2791,7 @@ class _FindingListQuery(NamedTuple):
     offset: int
     cursor: str | None
     merged_cursor: tuple[int, str] | None
-    window_days: int | None
+    window_days: int
     window_since: str | None
     scope_filters: dict[str, str]
     approximate_total: bool
@@ -3170,7 +3170,7 @@ def _finding_list_filters(
         "q": _clean(q),
         "framework": _clean(framework),
         "control": _clean(control),
-        "owner": owner.strip().lower() if _clean(owner) else None,
+        "owner": cleaned_owner.lower() if (cleaned_owner := _clean(owner)) else None,
         "sla": sla,
     }
     return {key: value for key, value in filters.items() if value is not None}

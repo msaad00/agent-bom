@@ -34,25 +34,108 @@ import logging
 import os
 import time
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Optional, TypeVar, cast
-from urllib.parse import quote
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import JSONResponse, Response
 
 from agent_bom.api.finding_read_context import finding_read_scope
+from agent_bom.api.graph_contracts import (
+    _ATTACK_PATH_ITEM_OPENAPI_SCHEMA as _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
+)
+from agent_bom.api.graph_contracts import (
+    _ATTACK_PATHS_OPENAPI_RESPONSE as _ATTACK_PATHS_OPENAPI_RESPONSE,
+)
+from agent_bom.api.graph_contracts import (
+    _EXPOSURE_PATH_OPENAPI_SCHEMA as _EXPOSURE_PATH_OPENAPI_SCHEMA,
+)
+from agent_bom.api.graph_contracts import (
+    _FIX_FIRST_VIEW_OPENAPI_RESPONSE as _FIX_FIRST_VIEW_OPENAPI_RESPONSE,
+)
+from agent_bom.api.graph_contracts import (
+    _TECHNIQUE_MAPPING_OPENAPI_SCHEMA as _TECHNIQUE_MAPPING_OPENAPI_SCHEMA,
+)
+from agent_bom.api.graph_contracts import (
+    GraphCompletenessResponse as GraphCompletenessResponse,
+)
+from agent_bom.api.graph_contracts import (
+    GraphDeployDecisionRequest as GraphDeployDecisionRequest,
+)
+from agent_bom.api.graph_contracts import (
+    GraphIdentifier as GraphIdentifier,
+)
+from agent_bom.api.graph_contracts import (
+    GraphScopeDescriptor as GraphScopeDescriptor,
+)
+from agent_bom.api.graph_contracts import (
+    IncidentEdgePageCompleteness as IncidentEdgePageCompleteness,
+)
+from agent_bom.api.graph_contracts import (
+    IncidentEdgePageResponse as IncidentEdgePageResponse,
+)
+from agent_bom.api.graph_contracts import (
+    PresetCreate as PresetCreate,
+)
+from agent_bom.api.graph_contracts import (
+    ScopedGraphCompleteness as ScopedGraphCompleteness,
+)
+from agent_bom.api.graph_contracts import (
+    ScopedGraphResponse as ScopedGraphResponse,
+)
 from agent_bom.api.graph_generation import optional_generation, pin_generation, verify_generation
 from agent_bom.api.graph_page_context import containment_ancestors, page_attack_context
 from agent_bom.api.graph_paging import _coalesce_alias, _enforce_node_offset_cap, _page_meta, _paginate
+from agent_bom.api.graph_presentation import (
+    _finding_ids_for_path as _finding_ids_for_path,
+)
+from agent_bom.api.graph_presentation import (
+    _finding_labels_for_path as _finding_labels_for_path,
+)
+from agent_bom.api.graph_presentation import (
+    _first_href_for_agent as _first_href_for_agent,
+)
+from agent_bom.api.graph_presentation import (
+    _fix_first_card_for_path as _fix_first_card_for_path,
+)
+from agent_bom.api.graph_presentation import (
+    _identity_finding_ids_for_path as _identity_finding_ids_for_path,
+)
+from agent_bom.api.graph_presentation import (
+    _next_actions_for_path as _next_actions_for_path,
+)
+from agent_bom.api.graph_presentation import (
+    _node_ids_for_types as _node_ids_for_types,
+)
+from agent_bom.api.graph_presentation import (
+    _node_labels_for_types as _node_labels_for_types,
+)
+from agent_bom.api.graph_presentation import (
+    _path_identity as _path_identity,
+)
+from agent_bom.api.graph_presentation import (
+    _path_matches_focus as _path_matches_focus,
+)
+from agent_bom.api.graph_presentation import (
+    _path_semantic_key as _path_semantic_key,
+)
+from agent_bom.api.graph_presentation import (
+    _risk_reasons_for_path as _risk_reasons_for_path,
+)
+from agent_bom.api.graph_presentation import (
+    _serialize_attack_path as _serialize_attack_path,
+)
+from agent_bom.api.graph_presentation import (
+    _serialize_attack_path_batch as _serialize_attack_path_batch,
+)
 from agent_bom.api.graph_query import GraphQueryRequest, _filtered_query_graph, query_payload
 from agent_bom.api.graph_store import containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStore, NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.cloud.runtime_graph_evidence import _enrich_loaded_graph_runtime_evidence
 from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET
 from agent_bom.graph import (
     SEVERITY_RANK,
@@ -70,12 +153,8 @@ from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.exposure import _exposure_path_for_attack_path as _exposure_path_for_attack_path
 from agent_bom.graph.exposure import _exposure_ref_for_node as _exposure_ref_for_node
 from agent_bom.graph.exposure import _finding_ids_for_nodes as _finding_ids_for_nodes
-from agent_bom.graph.hop_evidence import hop_evidence_schema
 from agent_bom.graph.path_derivation import (
     _build_edge_lookup,
-    _edge_relationships_for_hops,
-    _EdgeLookup,
-    _enrich_loaded_graph_runtime_evidence,
     _rel_value,
 )
 from agent_bom.graph.path_derivation import _derived_attack_paths as _derived_attack_paths
@@ -127,7 +206,6 @@ class _GraphAdmissionRoute(APIRoute):
 
 
 # PostgreSQL text cannot contain NUL; reject identifiers at the API boundary.
-GraphIdentifier = Annotated[str, StringConstraints(pattern=r"^[^\x00]*$")]
 
 router = APIRouter(route_class=_GraphAdmissionRoute)
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
@@ -148,63 +226,6 @@ _GOVERNANCE_EDGE_LIMIT = 5_000
 _GOVERNANCE_ATTACK_PATH_LIMIT = 100
 
 
-class GraphScopeDescriptor(BaseModel):
-    kind: GraphScopeKind
-    id: str | None
-    observed: bool
-    basis: Literal["persisted_graph_snapshot", "persisted_node_attributes", "persisted_graph_traversal"]
-
-
-class GraphCompletenessResponse(BaseModel):
-    status: Literal["complete", "sampled", "truncated"]
-    complete: bool
-    sampled: bool
-    truncated: bool
-    returned: int
-    total: int | None = None
-    reason: str | None = None
-
-
-class IncidentEdgePageCompleteness(GraphCompletenessResponse):
-    scope: Literal["incident_edge_page"] = "incident_edge_page"
-    missing_endpoint_count: int = 0
-
-
-class IncidentEdgePageResponse(BaseModel):
-    """Recorded relationship page, not a permission or collection-coverage verdict."""
-
-    evidence_scope: Literal["current_estate", "historical_scan"] | None = None
-
-    snapshot_generation: str | None
-    scan_id: str
-    node_id: str
-    found: bool
-    direction: Literal["in", "out", "both"]
-    limit: int
-    node: dict[str, Any] | None
-    nodes: list[dict[str, Any]]
-    edges: list[dict[str, Any]]
-    next_cursor: str | None
-    completeness: IncidentEdgePageCompleteness
-
-
-class ScopedGraphCompleteness(BaseModel):
-    source: GraphCompletenessResponse
-    result: GraphCompletenessResponse
-    edges: GraphCompletenessResponse
-
-
-class ScopedGraphResponse(BaseModel):
-    scan_id: str
-    tenant_id: str
-    created_at: str
-    scope: GraphScopeDescriptor
-    nodes: list[dict[str, Any]]
-    edges: list[dict[str, Any]]
-    stats: dict[str, Any]
-    completeness: ScopedGraphCompleteness
-
-
 _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.USER.value: "User",
     GraphSemanticLayer.IDENTITY.value: "Identity",
@@ -220,221 +241,6 @@ _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.FINDING.value: "Finding",
     GraphSemanticLayer.CODE.value: "Code",
     GraphSemanticLayer.CI.value: "CI/CD",
-}
-
-_TECHNIQUE_MAPPING_OPENAPI_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "description": (
-        "A typed MITRE ATT&CK / ATLAS technique mapped to one hop of the attack path, "
-        "derived from the path's observed graph evidence (edge relationship + node type). "
-        "These are potential/mapped techniques for the kill-chain sequence, NOT a claim of "
-        "detected attacker activity. Technique and tactic IDs resolve against the bundled catalog."
-    ),
-    "required": ["hop_index", "technique_id", "catalog", "tactics", "provenance", "confidence"],
-    "properties": {
-        "hop_index": {"type": "integer", "minimum": 0, "description": "0-based position in the kill-chain edge sequence."},
-        "technique_id": {"type": "string", "description": "ATT&CK (e.g. T1078) or ATLAS (e.g. AML.T0053) technique ID."},
-        "technique_name": {"type": "string"},
-        "catalog": {"type": "string", "enum": ["attack", "atlas"]},
-        "tactics": {"type": "array", "items": {"type": "string"}, "description": "Catalog-resolved tactic phase names / IDs."},
-        "provenance": {"type": "string", "description": "The observed edge evidence that produced the mapping."},
-        "confidence": {"anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]},
-        "evidence_basis": {"type": ["string", "null"], "enum": ["observed", "runtime_observed", "inferred", "modeled", None]},
-    },
-    "additionalProperties": False,
-}
-
-_ATTACK_PATH_ITEM_OPENAPI_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "exposure_path": None,  # filled after _EXPOSURE_PATH_OPENAPI_SCHEMA is defined
-        "reachability": {
-            "type": "string",
-            "enum": ["confirmed", "likely", "unlikely", "unknown"],
-            "description": "Evidence strength for whether the path is executable; structural topology alone is unknown.",
-        },
-        "reachability_basis": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Machine-readable evidence that produced the reachability verdict.",
-        },
-        "hop_evidence": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "relationship_provenance": {"type": "string", "enum": ["recorded", "unavailable"]},
-                    "correlation_identity_status": {"type": "string", "enum": ["current", "recomputation_required", "unavailable"]},
-                    "authority": hop_evidence_schema()["properties"]["authority"],
-                },
-                "additionalProperties": True,
-            },
-        },
-        "technique_mappings": {"type": "array", "items": _TECHNIQUE_MAPPING_OPENAPI_SCHEMA},
-        "mitre_technique_ids": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Deduped technique IDs mapped across the path's hops (convenience projection).",
-        },
-    },
-    "additionalProperties": True,
-}
-
-_EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "description": "Investigation-first exposure path shared by graph views and report exports.",
-    "required": ["id", "label", "summary", "riskScore", "severity", "source", "target", "hops", "relationships"],
-    "properties": {
-        "id": {"type": "string"},
-        "rank": {"type": "integer", "minimum": 1},
-        "label": {"type": "string"},
-        "summary": {"type": "string"},
-        "riskScore": {"type": "number"},
-        "severity": {"type": "string"},
-        "source": {"type": "object", "additionalProperties": True},
-        "target": {"type": "object", "additionalProperties": True},
-        "hops": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
-        "hopEvidence": {"type": "array", "items": hop_evidence_schema()},
-        "relationships": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
-        "nodeIds": {"type": "array", "items": {"type": "string"}},
-        "edgeIds": {"type": "array", "items": {"type": "string"}},
-        "findings": {"type": "array", "items": {"type": "string"}},
-        "affectedAgents": {"type": "array", "items": {"type": "string"}},
-        "affectedServers": {"type": "array", "items": {"type": "string"}},
-        "reachableTools": {"type": "array", "items": {"type": "string"}},
-        "exposedCredentials": {"type": "array", "items": {"type": "string"}},
-        "dependencyContext": {"type": "object", "additionalProperties": True},
-        "evidence": {"type": "object", "additionalProperties": True},
-        "provenance": {"type": "object", "additionalProperties": True},
-        "reachability": {"type": "string", "enum": ["confirmed", "likely", "unlikely", "unknown"]},
-        "reachabilityBasis": {"type": "array", "items": {"type": "string"}},
-    },
-}
-
-_ATTACK_PATH_ITEM_OPENAPI_SCHEMA["properties"]["exposure_path"] = _EXPOSURE_PATH_OPENAPI_SCHEMA
-
-_FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
-    "description": "Fix-first graph view with ranked cards and embedded ExposurePath payloads.",
-    "content": {
-        "application/json": {
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "scan_id": {"type": "string"},
-                    "tenant_id": {"type": "string"},
-                    "created_at": {"type": "string"},
-                    "attack_campaigns": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "priority_score": {"type": ["number", "null"]},
-                                "priority_method": {
-                                    "type": ["string", "null"],
-                                    "description": "Versioned structural ranking method; not an exploitability assessment.",
-                                },
-                                "exploitability": {"type": ["number", "null"]},
-                                "expected_risk_reduction": {"type": ["number", "null"]},
-                                "exploitability_evidence": {"type": "object", "additionalProperties": True},
-                                "expected_risk_reduction_evidence": {"type": "object", "additionalProperties": True},
-                            },
-                            "additionalProperties": True,
-                        },
-                    },
-                    "cards": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "string"},
-                                "semantic_key": {"type": "string"},
-                                "occurrence_count": {"type": "integer", "minimum": 1},
-                                "occurrence_path_ids": {"type": "array", "items": {"type": "string"}},
-                                "rank": {"type": "integer", "minimum": 1},
-                                "title": {"type": "string"},
-                                "attack_path": _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
-                                "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
-                                "rank_meta": {
-                                    "type": "object",
-                                    "properties": {
-                                        "reachability": {
-                                            "type": "string",
-                                            "enum": ["confirmed", "likely", "unknown", "unlikely"],
-                                        },
-                                        "raw_severity": {"type": "string"},
-                                    },
-                                    "additionalProperties": True,
-                                },
-                                "affected": {
-                                    "type": "object",
-                                    "properties": {
-                                        "findings": {"type": "array", "items": {"type": "string"}},
-                                        "finding_labels": {"type": "array", "items": {"type": "string"}},
-                                    },
-                                    "additionalProperties": True,
-                                },
-                            },
-                            "additionalProperties": True,
-                        },
-                    },
-                    "summary": {"type": "object", "additionalProperties": True},
-                    "focus": {"type": "object", "additionalProperties": True},
-                },
-            }
-        }
-    },
-}
-
-_ATTACK_PATHS_OPENAPI_RESPONSE: dict[str, Any] = {
-    "description": "Ranked attack-path queue with embedded ExposurePath payloads.",
-    "content": {
-        "application/json": {
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "scan_id": {"type": "string"},
-                    "tenant_id": {"type": "string"},
-                    "created_at": {"type": "string"},
-                    "nodes": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
-                    "edges": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
-                    "attack_paths": {
-                        "type": "array",
-                        "items": _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
-                    },
-                    "stats": {
-                        "type": "object",
-                        "properties": {
-                            "analysis_status": {
-                                "type": "object",
-                                "additionalProperties": {
-                                    "type": "object",
-                                    "required": ["status", "reason_codes", "limits", "observed"],
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "enum": ["complete", "limited", "skipped", "failed", "not_recorded"],
-                                        },
-                                        "reason_codes": {"type": "array", "items": {"type": "string"}},
-                                        "limits": {
-                                            "type": "object",
-                                            "additionalProperties": {"type": "integer", "minimum": 0},
-                                        },
-                                        "observed": {
-                                            "type": "object",
-                                            "additionalProperties": {"type": "integer", "minimum": 0},
-                                        },
-                                    },
-                                },
-                            }
-                        },
-                        "additionalProperties": True,
-                    },
-                    "pagination": {"type": "object", "additionalProperties": True},
-                    "count_metadata": {"type": "object", "additionalProperties": True},
-                },
-            }
-        }
-    },
 }
 
 
@@ -501,330 +307,6 @@ def _validate_entity_type_list(values: list[str]) -> list[str]:
     return cleaned
 
 
-def _node_labels_for_types(graph: UnifiedGraph, path_hops: list[str], entity_types: set[EntityType]) -> list[str]:
-    labels: list[str] = []
-    seen: set[str] = set()
-    for hop in path_hops:
-        node = graph.nodes.get(hop)
-        if not node or node.entity_type not in entity_types:
-            continue
-        label = node.label or node.id
-        key = label.lower()
-        if key in seen:
-            continue
-        labels.append(label)
-        seen.add(key)
-    return labels
-
-
-def _finding_ids_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: list[str]) -> list[str]:
-    return _finding_ids_for_nodes(graph.nodes, path_hops, vuln_ids)
-
-
-def _finding_labels_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: list[str]) -> list[str]:
-    """Return operator-readable advisory/node labels, never canonical UUIDs."""
-    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
-
-    labels: list[str] = []
-    seen: set[str] = set()
-
-    def add(value: object) -> None:
-        text = str(value or "").strip()
-        if not text or text.lower() in seen:
-            return
-        labels.append(text)
-        seen.add(text.lower())
-
-    for hop in path_hops:
-        node = graph.nodes.get(hop)
-        if not node or node.entity_type not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
-            continue
-        attrs = node.attributes if isinstance(node.attributes, dict) else {}
-        canonical = finding_id_from_node_attributes(attrs)
-        for key in ("cve_id", "vulnerability_id", "advisory_id", "rule_id", "title"):
-            if attrs.get(key):
-                add(attrs[key])
-                break
-        else:
-            if node.label and node.label != canonical:
-                add(node.label)
-    for value in vuln_ids:
-        if value and value not in _finding_ids_for_nodes(graph.nodes, path_hops, []):
-            add(value)
-    return labels
-
-
-def _identity_finding_ids_for_path(graph: UnifiedGraph, path: AttackPath) -> list[str]:
-    """Canonical occurrence identities scoped to assets on the path."""
-    from agent_bom.graph.asset_entity import finding_ids_for_asset_path
-
-    stamped = [
-        finding_id
-        for hop in path.hops
-        if (node := graph.nodes.get(hop)) is not None
-        for finding_id in finding_ids_for_asset_path(node.attributes, path.hops)
-    ]
-    candidates = stamped or list(path.finding_ids) or _finding_ids_for_path(graph, path.hops, path.vuln_ids)
-    return list(dict.fromkeys(value for value in candidates if value))
-
-
-def _node_ids_for_types(graph: UnifiedGraph, path_hops: list[str], entity_types: set[EntityType]) -> list[str]:
-    return sorted({hop for hop in path_hops if (node := graph.nodes.get(hop)) is not None and node.entity_type in entity_types})
-
-
-def _path_identity(path: AttackPath) -> str:
-    return f"{path.source}::{path.target}::{'->'.join(path.hops)}"
-
-
-def _path_semantic_key(graph: UnifiedGraph, path: AttackPath) -> str:
-    """Stable presentation identity; asset/agent dimensions prevent over-collapse."""
-    findings = sorted(label.lower() for label in _finding_labels_for_path(graph, path.hops, path.vuln_ids))
-    if not findings:
-        findings = sorted(_identity_finding_ids_for_path(graph, path)) or [path.target]
-    agents = _node_ids_for_types(
-        graph,
-        path.hops,
-        {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
-    ) or [path.source]
-    packages = _node_ids_for_types(graph, path.hops, {EntityType.PACKAGE})
-    assets = _node_ids_for_types(graph, path.hops, {EntityType.SERVER, EntityType.CONTAINER, EntityType.CLOUD_RESOURCE})
-    parts = (
-        ("finding", findings),
-        ("agent", agents),
-        ("package", packages),
-        ("asset", assets),
-    )
-    return "&".join(f"{name}={quote(','.join(values), safe='')}" for name, values in parts)
-
-
-def _first_href_for_agent(agent: str) -> str:
-    return f"/agents?name={quote(agent)}"
-
-
-def _risk_reasons_for_path(graph: UnifiedGraph, path: AttackPath) -> list[dict[str, str]]:
-    reasons: list[dict[str, str]] = []
-    for kind, label, detail, _boost in _fusion_signals_for_path(graph, path.hops):
-        reasons.append({"kind": kind, "label": label, "detail": detail})
-    if path.composite_risk >= 90:
-        reasons.append(
-            {
-                "kind": "critical_reach",
-                "label": "Critical reach",
-                "detail": "Composite risk is at or above the release-blocking threshold.",
-            }
-        )
-    elif path.composite_risk >= 70:
-        reasons.append(
-            {
-                "kind": "high_reach",
-                "label": "High reach",
-                "detail": "Composite risk is high enough to prioritize before broad topology review.",
-            }
-        )
-    if path.credential_exposure:
-        reasons.append(
-            {
-                "kind": "credential_exposure",
-                "label": "Credential exposure",
-                "detail": f"{len(path.credential_exposure)} credential signal(s) sit on this path.",
-            }
-        )
-    if path.tool_exposure:
-        dangerous_tools = [
-            tool
-            for tool in path.tool_exposure
-            if any(keyword in tool.lower() for keyword in ("shell", "exec", "run", "command", "subprocess", "filesystem"))
-        ]
-        reasons.append(
-            {
-                "kind": "tool_reach",
-                "label": "Tool reach",
-                "detail": (
-                    f"{len(dangerous_tools)} execution/file-capable tool(s) are reachable."
-                    if dangerous_tools
-                    else f"{len(path.tool_exposure)} tool(s) are reachable from the affected agent/server."
-                ),
-            }
-        )
-    finding_ids = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
-    if finding_ids:
-        reasons.append(
-            {
-                "kind": "finding",
-                "label": "Finding in chain",
-                "detail": f"{len(finding_ids)} vulnerability or misconfiguration finding(s) anchor this path.",
-            }
-        )
-    if not reasons:
-        reasons.append(
-            {
-                "kind": "topology",
-                "label": "Connected exposure",
-                "detail": "The graph found a connected exposure path that should be reviewed before full expansion.",
-            }
-        )
-    return reasons[:4]
-
-
-def _next_actions_for_path(
-    graph: UnifiedGraph,
-    path: AttackPath,
-    *,
-    finding_ids: list[str] | None = None,
-) -> list[dict[str, str]]:
-    findings = finding_ids if finding_ids is not None else _identity_finding_ids_for_path(graph, path)
-    agents = _node_labels_for_types(
-        graph,
-        path.hops,
-        {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
-    )
-    actions: list[dict[str, str]] = []
-    if findings:
-        finding_href = (
-            f"/findings?cve={quote(findings[0])}"
-            if findings[0].upper().startswith(("CVE-", "GHSA-"))
-            else f"/findings?finding={quote(findings[0])}"
-        )
-        actions.append(
-            {
-                "title": "Validate lead finding",
-                "detail": "Open the first finding and confirm the root cause before expanding the graph.",
-                "href": finding_href,
-            }
-        )
-    if agents:
-        actions.append(
-            {
-                "title": "Inspect exposed identity",
-                "detail": "Review the agent, user, or service account that can trigger this path.",
-                "href": _first_href_for_agent(agents[0]),
-            }
-        )
-    if path.credential_exposure:
-        actions.append(
-            {
-                "title": "Contain credentials",
-                "detail": "Rotate, scope, or remove exposed credentials before widening blast-radius analysis.",
-                "href": "/mesh",
-            }
-        )
-    elif path.tool_exposure:
-        actions.append(
-            {
-                "title": "Review reachable tools",
-                "detail": "Check whether the tool permissions turn this finding into a real incident path.",
-                "href": "/mesh",
-            }
-        )
-    actions.append(
-        {
-            "title": "Expand topology",
-            "detail": "Open the full lineage graph only when neighboring context is needed.",
-            "href": "/graph",
-        }
-    )
-    return actions[:4]
-
-
-def _fix_first_card_for_path(
-    graph: UnifiedGraph,
-    path: AttackPath,
-    rank: int,
-    *,
-    edge_lookup: _EdgeLookup | None = None,
-    occurrence_paths: list[AttackPath] | None = None,
-) -> dict:
-    grouped_paths = occurrence_paths or [path]
-    findings = list(dict.fromkeys(finding for item in grouped_paths for finding in _identity_finding_ids_for_path(graph, item)))
-    finding_labels = list(
-        dict.fromkeys(label for item in grouped_paths for label in _finding_labels_for_path(graph, item.hops, item.vuln_ids))
-    )
-    occurrence_path_ids = list(dict.fromkeys(_path_identity(item) for item in grouped_paths))
-    agents = _node_labels_for_types(
-        graph,
-        path.hops,
-        {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
-    )
-    servers = _node_labels_for_types(graph, path.hops, {EntityType.SERVER, EntityType.CONTAINER, EntityType.CLOUD_RESOURCE})
-    packages = _node_labels_for_types(graph, path.hops, {EntityType.PACKAGE})
-    sequence = [graph.nodes[hop].label for hop in path.hops if hop in graph.nodes]
-    target_node = graph.nodes.get(path.target)
-    display_finding = finding_labels[0] if finding_labels else target_node.label if target_node and target_node.label else "Exposure path"
-    title_parts = [display_finding]
-    if agents:
-        title_parts.append(f"via {agents[0]}")
-    if path.tool_exposure:
-        title_parts.append(f"with {path.tool_exposure[0]}")
-    return {
-        "id": _path_identity(path),
-        "semantic_key": _path_semantic_key(graph, path),
-        "occurrence_count": len(grouped_paths),
-        "occurrence_path_ids": occurrence_path_ids,
-        "rank": rank,
-        "title": " ".join(title_parts),
-        "summary": path.summary or "Review this path before opening the full topology graph.",
-        "attack_path": path.to_dict(),
-        "exposure_path": _exposure_path_for_attack_path(
-            path,
-            nodes_by_id=graph.nodes,
-            edges=graph.edges,
-            rank=rank,
-            scan_id=graph.scan_id,
-            edge_lookup=edge_lookup,
-        ),
-        "nodes": [graph.nodes[hop].to_dict() for hop in path.hops if hop in graph.nodes],
-        "sequence_labels": sequence,
-        "risk_reasons": _risk_reasons_for_path(graph, path),
-        "next_actions": _next_actions_for_path(graph, path, finding_ids=findings),
-        "affected": {
-            "agents": agents,
-            "servers": servers,
-            "packages": packages,
-            "findings": findings,
-            "finding_labels": finding_labels,
-            "credentials": list(path.credential_exposure),
-            "tools": list(path.tool_exposure),
-        },
-    }
-
-
-def _path_matches_focus(graph: UnifiedGraph, path: AttackPath, *, cve: str, package: str, agent: str) -> bool:
-    def norm(value: str) -> str:
-        return value.strip().lower()
-
-    cve_n = norm(cve)
-    package_n = norm(package)
-    agent_n = norm(agent)
-    if not cve_n and not package_n and not agent_n:
-        return True
-    labels = {norm(graph.nodes[hop].label) for hop in path.hops if hop in graph.nodes}
-    finding_ids = {norm(value) for value in _finding_ids_for_path(graph, path.hops, path.vuln_ids)}
-    if cve_n and cve_n not in labels and cve_n not in finding_ids:
-        return False
-    if package_n:
-        package_labels = {norm(label) for label in _node_labels_for_types(graph, path.hops, {EntityType.PACKAGE})}
-        # Finding links carry the package name while graph labels may include
-        # its version. Match either exactly; retain npm scopes and never widen
-        # an explicitly versioned selector to a different package version.
-        package_names = {label[: label.rfind("@")] if label.rfind("@") > 0 else label for label in package_labels}
-        if package_n not in package_labels and package_n not in package_names:
-            return False
-    if agent_n:
-        agent_selectors: set[str] = set()
-        for hop in path.hops:
-            node = graph.nodes.get(hop)
-            if node is None or node.entity_type not in {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT}:
-                continue
-            agent_selectors.update((norm(node.id), norm(node.label)))
-            # Local agent links carry the name used by the canonical agent:<name>
-            # ID. Never strip arbitrary cloud/source prefixes or match substrings.
-            if node.entity_type == EntityType.AGENT and node.id.startswith("agent:"):
-                agent_selectors.add(norm(node.id.removeprefix("agent:")))
-        if agent_n not in agent_selectors:
-            return False
-    return True
-
-
 def _joined_edges(*groups: list[UnifiedEdge]) -> list[UnifiedEdge]:
     """Concatenate edge lists without listing the same edge twice.
 
@@ -860,80 +342,6 @@ def _boundary_edge_count(edges: list[UnifiedEdge], node_ids: set[str]) -> int:
     edge list reaches past its node list instead of leaving it to be discovered.
     """
     return sum(1 for edge in edges if edge.source not in node_ids or edge.target not in node_ids)
-
-
-def _serialize_attack_path(
-    path: AttackPath,
-    edges: list[UnifiedEdge] | None = None,
-    *,
-    nodes_by_id: dict[str, Any] | None = None,
-    rank: int | None = None,
-    scan_id: str = "",
-    edge_lookup: _EdgeLookup | None = None,
-) -> dict:
-    data = path.to_dict()
-    if edges is not None:
-        from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
-
-        # Re-derive the projection from bounded matching topology. Historical
-        # receipt objects stay intact; old serialized mappings cannot supply
-        # evidence for an absent, reversed, or non-traversable relationship.
-        by_pair = edge_lookup if edge_lookup is not None else _build_edge_lookup(edges)
-        proof_graph = UnifiedGraph()
-        for hop in path.hops:
-            node = (nodes_by_id or {}).get(hop)
-            if node is not None:
-                proof_graph.add_node(node)
-        for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
-            if index < len(path.edges):
-                edge = by_pair.get((source, target, path.edges[index]))
-                if edge is not None:
-                    proof_graph.add_edge(edge)
-        mappings = derive_attack_path_techniques(path, proof_graph)
-        data["technique_mappings"] = [mapping.to_dict() for mapping in mappings]
-        data["mitre_technique_ids"] = sorted({mapping.technique_id for mapping in mappings})
-    if not data.get("edges") and edges is not None:
-        data["edges"] = _edge_relationships_for_hops(path.hops, edges, edge_lookup=edge_lookup)
-    if nodes_by_id is not None:
-        # Prefer stamped Finding.id values over CVE labels when available.
-        resolved = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
-        if resolved:
-            data["finding_ids"] = resolved
-        data["exposure_path"] = _exposure_path_for_attack_path(
-            path,
-            nodes_by_id=nodes_by_id,
-            edges=edges,
-            rank=rank,
-            scan_id=scan_id,
-            edge_lookup=edge_lookup,
-        )
-        if data.get("reachability") == "confirmed" and data["exposure_path"]["reachability"] != "confirmed":
-            data["reachability"] = data["exposure_path"]["reachability"]
-            data["reachability_basis"] = list(data["exposure_path"]["reachabilityBasis"])
-    return data
-
-
-def _serialize_attack_path_batch(
-    paths: list[AttackPath],
-    edges: list[UnifiedEdge] | None = None,
-    *,
-    nodes_by_id: dict[str, Any] | None = None,
-    scan_id: str = "",
-    rank_offset: int | None = None,
-) -> list[dict[str, Any]]:
-    """Serialize a page of paths with one topology index shared by every row."""
-    edge_lookup = _build_edge_lookup(edges)
-    return [
-        _serialize_attack_path(
-            path,
-            edges,
-            nodes_by_id=nodes_by_id,
-            rank=(rank_offset + index + 1) if rank_offset is not None else None,
-            scan_id=scan_id,
-            edge_lookup=edge_lookup,
-        )
-        for index, path in enumerate(paths)
-    ]
 
 
 def _bounded_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -1396,25 +804,6 @@ def _governance_graph_payload(
 # ═══════════════════════════════════════════════════════════════════════════
 # Preset model
 # ═══════════════════════════════════════════════════════════════════════════
-
-
-class PresetCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: str
-    description: str = ""
-    filters: dict
-
-
-class GraphDeployDecisionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    candidate: str | dict[str, Any] = Field(..., description="Package, image, service, or structured candidate descriptor")
-    tenant_id: str | None = Field(default=None, description="Accepted for SDK compatibility; request tenant scope is authoritative")
-    scan_id: str | None = Field(default=None, description="Scan snapshot ID; latest if omitted")
-    limit: int = Field(5, ge=1, le=25, description="Maximum matched exposure paths")
-    warn_risk: float = Field(40.0, ge=0, le=100, alias="warnRisk", description="Risk threshold for warning")
-    block_risk: float = Field(80.0, ge=0, le=100, alias="blockRisk", description="Risk threshold for blocking")
-    context: dict[str, Any] = Field(default_factory=dict, description="Optional caller context for future policy extensions")
 
 
 def _candidate_to_string(candidate: str | dict[str, Any]) -> str:

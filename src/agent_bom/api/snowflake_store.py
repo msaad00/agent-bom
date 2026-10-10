@@ -34,9 +34,9 @@ from .exception_store import (
     exception_write_tenant,
 )
 from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
+from .models import ScanJob
 from .policy_store import GatewayPolicy, PolicyAuditEntry
 from .schedule_store import ScanSchedule, schedule_record_for_tenant, schedule_write_tenant
-from .server import ScanJob
 from .store import _literal_like_pattern, _require_tenant_scope
 
 

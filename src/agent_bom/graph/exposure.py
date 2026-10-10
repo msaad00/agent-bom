@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_bom.graph import AttackPath, EntityType, UnifiedEdge, UnifiedNode
+from agent_bom.graph.container import AttackPath
+from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.edge_lookup import _build_edge_lookup, _EdgeLookup, _rel_value
 from agent_bom.graph.integration_contract import EVIDENCE_VERSION, node_evidence_provenance
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.path_derivation import _node_type_value
+from agent_bom.graph.types import EntityType
 
 
 def _finding_ids_for_nodes(nodes: dict[str, Any], path_hops: list[str], vuln_ids: list[str]) -> list[str]:

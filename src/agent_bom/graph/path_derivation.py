@@ -7,16 +7,18 @@ remain authoritative; callers use derivation when a snapshot has none.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from agent_bom.cloud.normalization import coerce_truthy
-from agent_bom.graph import SEVERITY_RANK, AttackPath, EntityType, RelationshipType, UnifiedGraph, UnifiedNode
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.attack_path_fusion import has_sensitive_data_label
+from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge_lookup import _build_edge_lookup as _build_edge_lookup
 from agent_bom.graph.edge_lookup import _edge_relationships_for_hops as _edge_relationships_for_hops
 from agent_bom.graph.edge_lookup import _EdgeLookup as _EdgeLookup
 from agent_bom.graph.edge_lookup import _rel_value as _rel_value
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.reachability_truth import node_reachability
+from agent_bom.graph.types import EntityType, RelationshipType
 
 logger = logging.getLogger(__name__)
 
@@ -649,23 +651,3 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         ),
         graph,
     )
-
-
-def _enrich_loaded_graph_runtime_evidence(graph: Any, tenant_id: str) -> Any:
-    """Best-effort CWPP workload runtime-evidence annotate on a loaded graph.
-
-    Covers snapshots persisted before enrich-at-persist landed. Tenant mismatch
-    or empty store is a no-op; never raises into graph routes.
-    """
-    try:
-        from agent_bom.cloud.runtime_workload_evidence import (
-            RuntimeWorkloadEvidenceIndex,
-            enrich_graph_workload_runtime_evidence,
-        )
-        from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
-
-        index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
-        enrich_graph_workload_runtime_evidence(graph, index)
-    except Exception:  # noqa: BLE001 — investigation reads must not fail closed on enrich
-        logger.debug("workload runtime evidence load enrich skipped", exc_info=False)
-    return graph

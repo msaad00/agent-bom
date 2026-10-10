@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.4",
-  "captured_at": "2026-10-10T17:11:11.142Z",
-  "source_commit": "13b66929fd74e3523e83176faa3a70e6f9addf99",
+  "captured_at": "2026-10-10T17:57:22.548Z",
+  "source_commit": "ad48dcc2bb34f49878fd8e3830122e0ae5fac37c",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:3a9ddf92dd41393f4b749b8d827166113001baecd61fdcbbb1d4f9b9622accd3",
+  "capture_inputs_sha256": "sha256:acf090286b57fc3f2c6ad2ed34cb7becd307ac72311c668f851b2aaff328a430",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -172,7 +172,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.108.4",
-      "sha256": "sha256:eaa4a4193217b73bc3f4a97612ec6798dc9f8cc3eb5401266a242cc3a0b32053"
+      "sha256": "sha256:3dc4e6937526a1ebb6cdbc176a9e50daf96ed34cb3351cdefc136a337cdc6c34"
     },
     {
       "presentation": "dark desktop",
@@ -273,7 +273,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.4",
-      "sha256": "sha256:4c0cfba04fed34b45c0c670b5114d67d84aaa6c5a8396c6bc787e41480ca6972"
+      "sha256": "sha256:8d4221c9caa871b5421657e68ff7bc1a409d6394ce1949f8a822d86453e70968"
     },
     {
       "presentation": "dark mobile",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.4",
-      "sha256": "sha256:a6c265d5051ec1c5b0935916ae977f9fb23867c23b6fa5b5d6ce3d16a8178fef"
+      "sha256": "sha256:0ee0b35270b3046318f132c3457ed24dd739df9cdcd9a042d24ebcd1fbd669b5"
     },
     {
       "presentation": "dark responsive 1000x900",
@@ -369,7 +369,7 @@
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
       "visible_version": "0.108.4",
-      "sha256": "sha256:1ce1ecc06f82dc992bf19b564876e4ff4d6b261ea0ba4ce67936b4964f13b810"
+      "sha256": "sha256:a189a3a137438f3470584a10ccf19364680600aa69675966c2194a2a92120000"
     },
     {
       "presentation": "dark desktop",

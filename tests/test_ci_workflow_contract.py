@@ -16,6 +16,50 @@ def _ci() -> dict[str, object]:
     return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_main_docker_pulls_authenticate_before_setup_and_build() -> None:
+    job = _ci()["jobs"]["docker"]
+    assert "github.event_name != 'pull_request'" in job["if"]
+    steps = job["steps"]
+    login = next(step for step in steps if step.get("uses", "").startswith("docker/login-action@"))
+    assert login["with"] == {
+        "registry": "docker.io",
+        "username": "${{ secrets.DOCKERHUB_USERNAME }}",
+        "password": "${{ secrets.DOCKERHUB_TOKEN }}",
+    }
+    assert "if" not in login
+    assert not login.get("continue-on-error", False)
+    for step in steps:
+        if step.get("uses", "").startswith(
+            ("docker/setup-qemu-action@", "docker/setup-buildx-action@")
+        ) or "docker buildx build" in step.get("run", ""):
+            assert steps.index(login) < steps.index(step)
+
+
+def test_postgres_registry_credentials_exclude_forks_and_dependabot() -> None:
+    service = _ci()["jobs"]["postgres-integration"]["services"]["postgres"]
+    trusted = (
+        "github.actor != 'dependabot[bot]' && "
+        "(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)"
+    )
+    for field, secret in (("username", "DOCKERHUB_USERNAME"), ("password", "DOCKERHUB_TOKEN")):
+        assert service["credentials"][field] == "${{ " + trusted + " && secrets." + secret + " || '' }}"
+
+
+def test_native_image_registry_login_excludes_forks_and_dependabot() -> None:
+    steps = _ci()["jobs"]["native-image"]["steps"]
+    login = next(step for step in steps if step.get("uses", "").startswith("docker/login-action@"))
+    assert " ".join(login["if"].split()) == (
+        "github.actor != 'dependabot[bot]' && "
+        "(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)"
+    )
+    assert login["with"]["username"] == "${{ secrets.DOCKERHUB_USERNAME }}"
+    assert login["with"]["password"] == "${{ secrets.DOCKERHUB_TOKEN }}"
+    assert not login.get("continue-on-error", False)
+    for step in steps:
+        if step.get("uses", "").startswith("docker/setup-buildx-action@") or "docker buildx build" in step.get("run", ""):
+            assert steps.index(login) < steps.index(step)
+
+
 def test_dependency_updates_share_one_scheduled_owner() -> None:
     config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
     groups = config["multi-ecosystem-groups"]

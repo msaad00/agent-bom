@@ -81,6 +81,114 @@ def _graphql(query: str, api_key: str) -> dict:
     return data.get("data", {})
 
 
+def _pod_image_inventory(image: str) -> tuple[list[Package], dict | None]:
+    """Return the pod image's container-image package and best-effort container SBOM."""
+    packages = []
+    container_sbom = None
+    if image:
+        img_name = image.split(":")[0].replace("/", "-")
+        img_version = image.split(":")[-1] if ":" in image else "latest"
+        packages.append(
+            Package(
+                name=img_name,
+                version=img_version,
+                ecosystem="container-image",
+                purl=build_package_purl(
+                    ecosystem="container-image",
+                    name=img_name,
+                    version=img_version,
+                ),
+            )
+        )
+        try:
+            from agent_bom.cloud.container_sbom import scan_container_image
+
+            container_sbom = scan_container_image(image).to_dict()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Container SBOM scan skipped for %s: %s", image, sanitize_text(exc))
+    return packages, container_sbom
+
+
+def _pod_agent(pod: dict) -> Agent:
+    """Build the agent for one RunPod GPU pod."""
+    pod_id = pod.get("id", "unknown")
+    pod_name = pod.get("name", pod_id)
+    image = pod.get("imageName", "")
+    gpu_count = pod.get("gpuCount", 0)
+    status = pod.get("desiredStatus", "unknown")
+    machine = pod.get("machine") or {}
+    gpu_model = machine.get("gpuDisplayName", "GPU")
+    location = machine.get("location", "unknown")
+
+    packages, container_sbom = _pod_image_inventory(image)
+
+    server = MCPServer(
+        name=f"runpod:{pod_name}",
+        transport=TransportType.UNKNOWN,
+        packages=packages,
+        tools=[MCPTool(name=pod_name, description=f"RunPod {gpu_model}x{gpu_count} ({location})")],
+    )
+
+    return Agent(
+        name=f"runpod:{pod_name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"runpod://pod/{pod_id}",
+        source="runpod-pod",
+        version=status,
+        mcp_servers=[server],
+        metadata={
+            "gpu_type": gpu_model,
+            "gpu_count": gpu_count,
+            "location": location,
+            "image": image,
+            "container_sbom": container_sbom,
+            "cloud_origin": build_cloud_origin(
+                provider="runpod",
+                service="compute",
+                resource_type="gpu-pod",
+                resource_id=pod_id,
+                resource_name=pod_name,
+                raw_identity={"id": pod_id, "image": image, "location": location},
+            ),
+        },
+    )
+
+
+def _endpoint_agent(ep: dict) -> Agent:
+    """Build the agent for one RunPod serverless endpoint."""
+    ep_id = ep.get("id", "unknown")
+    ep_name = ep.get("name", ep_id)
+    gpu_ids = ep.get("gpuIds", "")
+
+    server = MCPServer(
+        name=f"runpod-serverless:{ep_name}",
+        transport=TransportType.SSE,
+        url=f"https://api.runpod.ai/v2/{ep_id}/run",
+        tools=[MCPTool(name=ep_name, description=f"RunPod serverless endpoint ({gpu_ids})")],
+    )
+
+    return Agent(
+        name=f"runpod-serverless:{ep_name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"runpod://serverless/{ep_id}",
+        source="runpod-serverless",
+        version="serverless",
+        mcp_servers=[server],
+        metadata={
+            "gpu_ids": gpu_ids,
+            "endpoint_id": ep_id,
+            "cloud_origin": build_cloud_origin(
+                provider="runpod",
+                service="serverless",
+                resource_type="endpoint",
+                resource_id=ep_id,
+                resource_name=ep_name,
+                raw_identity={"id": ep_id, "gpu_ids": gpu_ids},
+            ),
+        },
+    )
+
+
 def discover(
     api_key: str | None = None,
     **_kwargs: object,
@@ -106,70 +214,7 @@ def discover(
         pods = data.get("myself", {}).get("pods", []) or []
 
         for pod in pods:
-            pod_id = pod.get("id", "unknown")
-            pod_name = pod.get("name", pod_id)
-            image = pod.get("imageName", "")
-            gpu_count = pod.get("gpuCount", 0)
-            status = pod.get("desiredStatus", "unknown")
-            machine = pod.get("machine") or {}
-            gpu_model = machine.get("gpuDisplayName", "GPU")
-            location = machine.get("location", "unknown")
-
-            packages = []
-            container_sbom = None
-            if image:
-                img_name = image.split(":")[0].replace("/", "-")
-                img_version = image.split(":")[-1] if ":" in image else "latest"
-                packages.append(
-                    Package(
-                        name=img_name,
-                        version=img_version,
-                        ecosystem="container-image",
-                        purl=build_package_purl(
-                            ecosystem="container-image",
-                            name=img_name,
-                            version=img_version,
-                        ),
-                    )
-                )
-                try:
-                    from agent_bom.cloud.container_sbom import scan_container_image
-
-                    container_sbom = scan_container_image(image).to_dict()
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("Container SBOM scan skipped for %s: %s", image, sanitize_text(exc))
-
-            server = MCPServer(
-                name=f"runpod:{pod_name}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-                tools=[MCPTool(name=pod_name, description=f"RunPod {gpu_model}x{gpu_count} ({location})")],
-            )
-
-            agent = Agent(
-                name=f"runpod:{pod_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"runpod://pod/{pod_id}",
-                source="runpod-pod",
-                version=status,
-                mcp_servers=[server],
-                metadata={
-                    "gpu_type": gpu_model,
-                    "gpu_count": gpu_count,
-                    "location": location,
-                    "image": image,
-                    "container_sbom": container_sbom,
-                    "cloud_origin": build_cloud_origin(
-                        provider="runpod",
-                        service="compute",
-                        resource_type="gpu-pod",
-                        resource_id=pod_id,
-                        resource_name=pod_name,
-                        raw_identity={"id": pod_id, "image": image, "location": location},
-                    ),
-                },
-            )
-            agents.append(agent)
+            agents.append(_pod_agent(pod))
 
     except CloudDiscoveryError as exc:
         warnings.append(str(exc))
@@ -182,38 +227,7 @@ def discover(
         endpoints = data.get("myself", {}).get("endpoints", []) or []
 
         for ep in endpoints:
-            ep_id = ep.get("id", "unknown")
-            ep_name = ep.get("name", ep_id)
-            gpu_ids = ep.get("gpuIds", "")
-
-            server = MCPServer(
-                name=f"runpod-serverless:{ep_name}",
-                transport=TransportType.SSE,
-                url=f"https://api.runpod.ai/v2/{ep_id}/run",
-                tools=[MCPTool(name=ep_name, description=f"RunPod serverless endpoint ({gpu_ids})")],
-            )
-
-            agent = Agent(
-                name=f"runpod-serverless:{ep_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"runpod://serverless/{ep_id}",
-                source="runpod-serverless",
-                version="serverless",
-                mcp_servers=[server],
-                metadata={
-                    "gpu_ids": gpu_ids,
-                    "endpoint_id": ep_id,
-                    "cloud_origin": build_cloud_origin(
-                        provider="runpod",
-                        service="serverless",
-                        resource_type="endpoint",
-                        resource_id=ep_id,
-                        resource_name=ep_name,
-                        raw_identity={"id": ep_id, "gpu_ids": gpu_ids},
-                    ),
-                },
-            )
-            agents.append(agent)
+            agents.append(_endpoint_agent(ep))
 
     except Exception as exc:
         warnings.append(f"RunPod serverless discovery error: {exc}")

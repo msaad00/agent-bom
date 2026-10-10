@@ -41,7 +41,7 @@ def _clear_store_globals() -> None:
     api_stores._exception_store = None
     api_stores._trend_store = None
     api_stores._graph_store = None
-    api_stores._analytics_store = None
+    api_stores.set_analytics_store(None)
 
 
 @patch("agent_bom.api.snowflake_store._sf_connect")

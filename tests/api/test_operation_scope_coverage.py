@@ -267,3 +267,24 @@ def test_websocket_accepts_runtime_read_authority(scopes):
     context = _ws_auth_from_token(raw)
     assert context is not None
     assert context.tenant_id == "scope-tenant"
+
+
+@pytest.mark.parametrize("mode", ["key", "session"])
+@pytest.mark.parametrize(
+    "path,scope",
+    [
+        ("/v1/graph/query", "graph:read"),
+        ("/v1/graph/should-i-deploy", "graph:read"),
+        ("/v1/runtime/profiles/evaluate", "runtime:read"),
+        ("/v1/audit/export/verify", "audit:read"),
+        ("/v1/intel/match", "intel:read"),
+        ("/v1/intel/daily-brief", "intel:read"),
+        ("/v1/traces/attack-paths", "runtime:read"),
+    ],
+)
+def test_post_read_scope_is_limited_to_the_declared_operation(mode, path, scope):
+    client = client_for("POST", "/{path:path}")
+    authenticate(client, mode, scopes=[scope])
+    assert client.post(path).status_code == 200
+    assert client.post(path + "/mutate").status_code == 403
+    assert client.post(path + "-admin").status_code == 403

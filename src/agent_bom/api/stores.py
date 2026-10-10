@@ -7,6 +7,8 @@ import threading
 from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom.api.neptune_graph import NeptuneGraphStore
+from agent_bom.api.storage.analytics import get_analytics_store
+from agent_bom.api.storage.analytics import set_analytics_store as set_analytics_store
 from agent_bom.api.storage.job_backends import configured_job_store
 from agent_bom.api.storage.job_cache import (
     _COMPACTED_RESULT_MARKER as _COMPACTED_RESULT_MARKER,
@@ -193,26 +195,9 @@ def set_policy_store(store: Any) -> None:
     _policy_store = store
 
 
-# ─── Analytics store (ClickHouse OLAP — optional) ───────────────────────────
-_analytics_store: Any = None
-
-
 def _get_analytics_store() -> Any:
-    """Get the active analytics store, defaulting to NullAnalyticsStore."""
-    global _analytics_store
-    if _analytics_store is None:
-        with _store_lock:
-            if _analytics_store is None:
-                from agent_bom.api.clickhouse_store import NullAnalyticsStore
-
-                _analytics_store = NullAnalyticsStore()
-    return _analytics_store
-
-
-def set_analytics_store(store: Any) -> None:
-    """Switch the analytics store backend. Call before server startup."""
-    global _analytics_store
-    _analytics_store = store
+    """Compatibility entry point for the dedicated analytics registry."""
+    return get_analytics_store()
 
 
 # ─── Schedule store (pluggable) ─────────────────────────────────────────────

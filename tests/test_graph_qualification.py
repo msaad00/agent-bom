@@ -184,3 +184,30 @@ def test_process_start_failure_is_ready_and_has_safe_diagnostics(monkeypatch):
     assert "sqlite_errorname" not in failure
     assert "secret" not in json.dumps(failure)
     assert stop.is_set()
+
+
+def test_reader_records_bounded_latency_and_serialized_payload_evidence(monkeypatch, tmp_path):
+    from threading import Event
+
+    from scripts import qualify_graph_store as probe
+
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    probe.write(store, "measured", 50, 0)
+    original = store.incident_edges_page
+    stop = Event()
+
+    def one_pair(**kwargs):
+        page = original(**kwargs)
+        if kwargs.get("cursor"):
+            stop.set()
+        return page
+
+    monkeypatch.setattr(store, "incident_edges_page", one_pair)
+    result = probe.run_worker(store, "measured", 50, "reader", stop)
+    assert "error_type" not in result
+    measurements = result["read_measurements"]
+    assert measurements["samples"] == 1
+    assert measurements["sample_limit"] == 512
+    assert measurements["p95_ms"] >= measurements["p50_ms"] >= 0
+    assert measurements["max_payload_bytes"] >= measurements["mean_payload_bytes"] > 0
+    assert measurements["representation"] == "two incident-edge pages serialized as compact JSON; not HTTP wire bytes"

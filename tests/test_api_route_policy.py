@@ -145,3 +145,23 @@ def test_unclassified_operation_denied_after_every_authentication_path(monkeypat
         assert reached == []
     finally:
         set_key_store(previous)
+
+
+@pytest.mark.parametrize(
+    "path,scope",
+    [
+        ("/v1/graph/query", "graph:read"),
+        ("/v1/graph/should-i-deploy", "graph:read"),
+        ("/v1/runtime/profiles/evaluate", "runtime:read"),
+        ("/v1/audit/export/verify", "audit:read"),
+        ("/v1/intel/match", "intel:read"),
+        ("/v1/intel/daily-brief", "intel:read"),
+        ("/v1/traces/attack-paths", "runtime:read"),
+    ],
+)
+def test_post_read_grants_do_not_authorize_future_child_operations(path, scope):
+    from agent_bom.api.route_policy import request_scopes_allow
+
+    assert request_scopes_allow([scope], "POST", path)
+    assert not request_scopes_allow([scope], "POST", path + "/mutate")
+    assert not request_scopes_allow([scope], "POST", path + "-admin")

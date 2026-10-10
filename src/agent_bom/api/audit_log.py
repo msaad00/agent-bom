@@ -866,7 +866,7 @@ def get_audit_log() -> AuditLogStore:
         with _audit_lock:
             if _audit_log is None:
                 if postgres_deployment_configured():
-                    from agent_bom.api.postgres_store import PostgresAuditLog
+                    from agent_bom.api.postgres_audit import PostgresAuditLog
 
                     _audit_log = PostgresAuditLog()
                 else:
@@ -883,7 +883,7 @@ def _default_tenant_id(details: dict[str, object]) -> str:
     if tenant not in (None, ""):
         return str(tenant)
     try:
-        from agent_bom.api.postgres_store import _current_tenant
+        from agent_bom.api.postgres_common import _current_tenant
 
         current = _current_tenant.get()
         if current:
@@ -1001,9 +1001,9 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
     )
     get_audit_log().append(entry)
     try:
-        from agent_bom.api.stores import _get_analytics_store
+        from agent_bom.api.storage.analytics import get_analytics_store
 
-        _get_analytics_store().record_audit_event(
+        get_analytics_store().record_audit_event(
             {
                 "entry_id": entry.entry_id,
                 "timestamp": entry.timestamp,

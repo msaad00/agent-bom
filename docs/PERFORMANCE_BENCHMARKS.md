@@ -22,6 +22,24 @@ k6 run deploy/loadtest/k6-graph-api.js
 k6 run deploy/loadtest/k6-proxy-audit.js
 ```
 
+For a bounded high-degree storage workload, use a new task-owned database and
+receipt path on every run:
+
+```bash
+python scripts/qualify_graph_store.py --sqlite /tmp/graph-run.db --executor processes --seconds 30 --nodes 10000 --output /tmp/graph-run.json
+python scripts/qualify_graph_store.py --sqlite /tmp/graph-run.db --verify-checkpoint /tmp/graph-run.json --output /tmp/graph-reopen.json
+```
+
+The fixture places every relationship on one root and runs independent readers
+and writers for two tenants. Reader receipts include p50/p95 latency and compact
+JSON payload bytes for the first 512 completed page pairs, with the sample count
+and limit explicit. Latency excludes payload serialization; sizes describe store
+page documents, not HTTP wire bytes. Generation restarts are counted separately
+from completed reads. A run with no completed pairs has no read latency estimate.
+Reopening verifies stored revisions, counts and content digests. This is synthetic
+local evidence, not a production capacity, crash recovery, PostgreSQL failover,
+or cloud qualification claim. Keep the database and receipts outside the repo.
+
 For end-to-end CLI scan cost (wall, CPU, peak RSS, JSON size) and
 `agent-bom --help` cold start, using a synthetic npm lockfile built from
 package names in the local vulnerability DB (run `agent-bom db update` first):

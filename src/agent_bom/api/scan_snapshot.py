@@ -1,7 +1,7 @@
-"""Materialize completed scan jobs into finding snapshots (ADR-015, phase 1).
+"""Materialize completed scan jobs into finding snapshots (ADR-015).
 
-Phase 1 is write-only: completed jobs are materialized behind the opt-in
-``AGENT_BOM_SCAN_SNAPSHOTS`` setting and nothing reads the snapshots yet. A
+Completed jobs are materialized behind the opt-in ``AGENT_BOM_SCAN_SNAPSHOTS``
+setting. Independently opted-in reads verify parity before using a snapshot. A
 snapshot holds only what is intrinsic to the job — its fold metadata from
 ``findings_current`` and the rows ``collect_scan_findings`` derives from the
 retained result. Runtime evidence, triage owners, suppressions and other
@@ -38,7 +38,12 @@ from agent_bom.api.findings_current import (
     scan_scope_key,
 )
 from agent_bom.api.models import JobStatus, ScanJob
-from agent_bom.api.scan_snapshot_store import ScanSnapshotStore, get_scan_snapshot_store, purge_tenant_snapshots
+from agent_bom.api.scan_snapshot_store import (
+    SCAN_SNAPSHOT_ROW_SCHEMA_VERSION,
+    ScanSnapshotStore,
+    get_scan_snapshot_store,
+    purge_tenant_snapshots,
+)
 from agent_bom.api.storage.job_backends import configured_job_store
 from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import scan_snapshots_enabled
@@ -49,9 +54,6 @@ if TYPE_CHECKING:
     from agent_bom.api.scan_context import ScanContext
 
 _logger = logging.getLogger(__name__)
-
-# Bump when intrinsic row derivation changes; readers ignore other versions.
-SCAN_SNAPSHOT_ROW_SCHEMA_VERSION = 1
 
 
 def _utc(value: Any) -> str:

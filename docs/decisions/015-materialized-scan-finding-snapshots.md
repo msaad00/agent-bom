@@ -1,6 +1,6 @@
 # ADR-015: Materialized Scan Finding Snapshots
 
-**Status:** Phase 1 implemented; read-path and default-on phases proposed
+**Status:** Write path and guarded read qualification implemented; optimized reads and default-on proposed
 **Date:** 2026-10-10
 
 ## Context
@@ -57,7 +57,9 @@ revertible:
 1. **Write path.** Materialize on completion behind an opt-in setting
    (default off), with a backfill command for retained jobs and cleanup on job
    deletion and expiry. Reads are unchanged.
-2. **Read path.** When enabled, the fold selects jobs from the metadata table
+2. **Read path.** The initial guarded mode described below verifies snapshot
+   candidates against the current collector. In the subsequent optimized mode,
+   the fold will select jobs from the metadata table
    and fetches rows only for selected jobs. A job without a snapshot, or with a
    different row-schema version, falls back to rebuilding from its result. A
    differential test harness runs the existing current-findings semantics
@@ -109,3 +111,38 @@ To stop new writes, unset the setting. Existing findings reads are unchanged.
 snapshots for that tenant even with the setting off; retained job results remain
 available for rebuilding. These are operator commands with access to the configured
 database; the tenant argument is explicit scope, not caller authentication.
+
+
+## Guarded read qualification
+
+Set `AGENT_BOM_SCAN_SNAPSHOT_READS=1` on the API to qualify snapshot-backed
+finding rows. This flag is independent of the write flag and defaults off.
+With snapshots already populated, request `GET /v1/findings?origin=scan` using
+the deployment's normal authentication. The response contract is unchanged.
+
+For each selected retained job, the reader collects the current rows, loads
+that tenant's snapshot, reapplies live enrichment, and compares the complete
+ordered JSON row values (including value types) before the shared identifier, owner and suppression
+projection. It returns the snapshot candidate only on exact equality. Missing
+or old-schema snapshots, invalid row counts or ordinals, read errors and
+mismatches use the current collector's rows. A current-collector error still
+propagates; derived snapshots never conceal an authoritative read failure.
+No snapshot payload or backend exception is written to qualification logs.
+
+The `agent_bom.api.scan_snapshot_read` logger emits debug outcomes `match` and
+`missing_or_stale`; warning outcomes `mismatch`, `invalid` and `unavailable`
+identify fallback. These signals describe parity or availability, not a clean
+security result. Inspect them while exercising findings, posture and exports;
+unset the read flag to disable the extra work immediately. Writes and cleanup
+continue according to their existing contracts.
+
+This qualification mode adds a snapshot lookup and a second enrichment pass.
+It still loads retained job results, uses their original history for first-seen
+and SLA semantics, and builds effective reach from the retained report. It does
+not establish lower read latency or history-independent memory use. Differential
+coverage includes incomplete rescans, empty replacement, parent exclusion,
+explicit and alternate scan IDs, history outside the display window, changed
+runtime evidence and mixed representations. Enriching before versus after a
+representation merge can differ; the parity gate preserves existing behavior
+instead of serving that difference. Metadata-only selection and removing the
+reference comparison require a later validated optimization.

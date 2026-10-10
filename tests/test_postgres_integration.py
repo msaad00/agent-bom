@@ -1870,7 +1870,8 @@ def test_postgres_schedule_store_keeps_schedule_identity_bound_to_tenant():
         reset_current_tenant(token)
 
 
-def test_maintenance_bootstrap_is_repeatable_under_a_non_superuser_role():
+@pytest.mark.parametrize("preprovisioned", [False, True])
+def test_maintenance_bootstrap_is_repeatable_under_a_non_superuser_role(preprovisioned):
     """Managed-Postgres migrations must validate safe roles without altering SUPERUSER."""
     from pathlib import Path
 
@@ -1889,9 +1890,19 @@ def test_maintenance_bootstrap_is_repeatable_under_a_non_superuser_role():
     with psycopg.connect(admin_dsn) as conn:
         try:
             conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN CREATEROLE NOSUPERUSER NOBYPASSRLS").format(sql.Identifier(owner)))
-            session_user = conn.execute("SELECT session_user").fetchone()[0]
-            conn.execute(sql.SQL("GRANT {} TO {}").format(sql.Identifier(owner), sql.Identifier(session_user)))
-            conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(owner)))
+            if preprovisioned:
+                conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN NOSUPERUSER NOBYPASSRLS").format(sql.Identifier(marker)))
+                conn.execute(sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER NOBYPASSRLS").format(sql.Identifier(login)))
+                for role in (marker, login):
+                    conn.execute(sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(sql.Identifier(role), sql.Identifier(owner)))
+            # The bootstrap grants to session_user, so SET ROLE alone would
+            # exercise a superuser login instead of a managed migration session.
+            conn.execute(sql.SQL("SET LOCAL SESSION AUTHORIZATION {}").format(sql.Identifier(owner)))
+            assert conn.execute("SELECT current_user, session_user").fetchone() == (owner, owner)
+            assert conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone() == (
+                False,
+                False,
+            )
             conn.execute(block)
             conn.execute(block)
             assert conn.execute("SELECT rolcanlogin, rolsuper, rolbypassrls FROM pg_roles WHERE rolname=%s", (login,)).fetchone() == (

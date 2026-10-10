@@ -885,13 +885,15 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_rls_maintenance') THEN
         CREATE ROLE agent_bom_rls_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS;
-    ELSE
-        ALTER ROLE agent_bom_rls_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_rls_maintenance'
+                  AND (rolcanlogin OR rolsuper OR rolbypassrls)) THEN
+        RAISE EXCEPTION 'agent_bom_rls_maintenance must be NOLOGIN NOSUPERUSER NOBYPASSRLS';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_maintenance') THEN
         CREATE ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS;
-    ELSE
-        ALTER ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_maintenance'
+                  AND (NOT rolcanlogin OR rolsuper OR rolbypassrls)) THEN
+        RAISE EXCEPTION 'agent_bom_maintenance must be LOGIN NOSUPERUSER NOBYPASSRLS';
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_app') THEN
         REVOKE agent_bom_rls_maintenance FROM agent_bom_app;

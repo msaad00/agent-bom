@@ -252,3 +252,25 @@ backup and verified row preservation before UTC partitions are provisioned.
 There is no automatic detach, data relocation, or partition-bound migration in
 this change. Runtime application roles remain DML-only and cannot repair missing
 or conflicting migration-owned partitions.
+
+
+### Managed PostgreSQL runtime roles
+
+Before the first Helm migration, have the database administrator provision the
+`agent_bom_app` and `agent_bom_maintenance` logins with the credentials supplied
+in their separate Kubernetes Secrets. Both logins must be `NOSUPERUSER` and
+`NOBYPASSRLS`; the app must never inherit `agent_bom_rls_maintenance`. The
+migration identity needs schema ownership and the role-administration rights
+required by the provisioning path.
+
+Initialization creates a missing maintenance marker as `NOLOGIN` and the
+maintenance login as `LOGIN`. For existing roles, it validates those attributes
+and refuses unsafe configurations. It does not reapply the `SUPERUSER` attribute:
+managed PostgreSQL can reject even `ALTER ROLE ... NOSUPERUSER` when the role is
+already safe. An invalid role fails initialization; a database administrator
+must correct it before retrying. Do not enable the application's privileged-role
+escape hatch to bypass this check.
+
+After migrations, use the chart's PostgreSQL verification job to check the app
+and maintenance identities before serving traffic. Successful role setup does
+not establish load capacity, database failover, or backup restoration.

@@ -13,6 +13,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Storage backends now carry a declared support tier: PostgreSQL (server system of record) and SQLite (local, CLI and pilot) are supported, ClickHouse is an analytics sink only, and the Snowflake control-plane stores and the Neptune graph backend are experimental. When an experimental backend is selected, the API logs one warning at startup that names the backend, its tier and `docs/STORAGE_BACKENDS.md`. In a deployment that looks multi-tenant, the warning states that tenant isolation for that backend is not proven. Startup continues by default. `AGENT_BOM_REQUIRE_SUPPORTED_STORAGE=1` refuses to start with an experimental backend. `agent-bom doctor` lists the tier of each selected store under Platform integrations; experimental rows count as warnings.
 
+### Changed
+
+- The top-level module guard (`scripts/check_package_layout.py`) now names a likely subpackage for each new `src/agent_bom/*.py` file and points to the new `docs/CODE_MAP.md`, which maps common changes to their owning packages, canonical models and layering rules. The guard has its own regression test.
+- `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
+- The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
+
 ## [0.108.4] - 2026-10-09
 
 ### Fixed

@@ -109,6 +109,35 @@ surface.
 | **analytics/lake** | optional ClickHouse, Snowflake, OTEL, or S3 exports |
 | **runtime enforcement** | selected proxy or gateway, not all traffic by default |
 
+## Support tiers
+
+`deploy/` holds more targets than the project can test on every release. This
+table says which ones the maintainers keep working, so you can choose with the
+right expectations. Nothing here has been removed; a lower tier means less
+release testing, not that the files are broken.
+
+| Tier | Target | Files | What to expect |
+|---|---|---|---|
+| **Supported** | Docker Compose pilot | `deploy/docker-compose.pilot.yml` | Default first deployment. Exercised by `scripts/deploy/install.sh pilot`. |
+| **Supported** | Docker Compose platform (plus `hosted-poc` / `product` overlays) | `deploy/docker-compose.platform.yml` | Production-shaped single host. Overlays are layered on the platform file only. |
+| **Supported** | Helm chart | `deploy/helm/agent-bom/` | The control-plane and runtime chart. Production values live in `examples/`. |
+| **Supported** | EKS Terraform | `deploy/terraform/platform-eks/` | The reference production install (`scripts/deploy/install.sh eks`). |
+| **Supported** | Read-only cloud connect | `deploy/terraform/connect-*`, `deploy/cloudformation/agent-bom-readonly-role.yaml` | Customer-side roles the control plane assumes. |
+| **Preview** | AKS / GKE | Helm chart plus `examples/aks-*` / `examples/gke-*` values | Same chart; cloud-specific workload-identity values have less live coverage than EKS. |
+| **Preview** | Snowflake Native App / SPCS | `deploy/snowflake/` | Installation contract only. Native App scan dispatch is unavailable; see `deploy/snowflake/native-app/README.md`. |
+| **Preview** | Snowflake POV backend | `scripts/deploy/install.sh snowflake` | Self-hosted API/UI with explicit [backend parity](backend-parity.md) limits. |
+| **Preview** | Air-gapped image bundle | `scripts/release/build-airgap-image-bundle.sh` | See [Air-Gapped Image Bundle](airgapped-image-bundle.md). |
+| **Preview** | CloudFormation serverless self-scan | `deploy/cloudformation/agent-bom-scan.yaml` | CodeBuild scan that writes reports to S3, without a control plane. |
+| **Reference** | Raw Kubernetes manifests | `deploy/k8s/` | Examples (CronJob, DaemonSet, sidecar). Prefer the Helm chart for real installs. |
+| **Reference** | Dev and example Compose files | `deploy/docker-compose.fullstack.yml`, `docker-compose.runtime-example.yml`, `docker-compose.demo-override.yml`, `docker-compose.yml` (deprecated) | Local development, a sidecar example and the anonymous demo. Not for customer deployments. |
+| **Community** | Fly.io, Render, Procfile hosts | `deploy/fly.toml`, `deploy/render.yaml`, `deploy/Procfile` | Run the MCP server alone (SSE or streamable HTTP), not the control plane. Config is syntax-checked in tests; no live deploy runs in CI. |
+| **Community** | Railway | `railway.json` | MCP SSE server only. The release workflow `deploy-mcp-sse.yml` deploys it only when the repository variable `DEPLOY_TARGET` is `railway`. |
+
+`deploy/supabase/` is not a separate deployment target: it holds the Postgres
+and ClickHouse schema and migrations that the supported Compose stacks mount.
+Contributions that keep a Community target working are welcome. Please open an
+issue before adding a new target.
+
 ## Enterprise Deployment Promise
 
 This self-hosted shape is designed around a few explicit operating principles:

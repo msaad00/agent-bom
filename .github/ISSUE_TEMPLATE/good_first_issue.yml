@@ -1,0 +1,66 @@
+name: Good First Issue (maintainers)
+description: A small, well-scoped task for a new contributor. Maintainers use this template to file starter work.
+labels: ["good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A good first issue should take a new contributor an afternoon, not a week.
+        Spell out where to start and what "done" looks like, so nobody has to read the
+        whole codebase first. [`docs/CODE_MAP.md`](https://github.com/msaad00/agent-bom/blob/main/docs/CODE_MAP.md)
+        maps areas to owning packages.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Scanner importer (parsers/)
+        - IaC rule (iac/)
+        - CSPM / CIS check (cloud/)
+        - MCP registry entry
+        - Docs fix
+        - UI (ui/)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What should change, and what is explicitly out of scope.
+      placeholder: |
+        Add a Dockerfile rule that flags `ADD` with a remote URL.
+        Out of scope: changing existing rule IDs or severities.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable conditions for "done", including the test to add.
+      placeholder: |
+        - [ ] Rule fires on a fixture with `ADD https://...`
+        - [ ] Rule does not fire on `ADD ./local`
+        - [ ] `uv run pytest tests/<file>.py -q` passes
+    validations:
+      required: true
+
+  - type: textarea
+    id: pointers
+    attributes:
+      label: Pointers
+      description: Files to read first, a similar existing change to copy, and the narrow test command.
+      placeholder: |
+        - Start in src/agent_bom/iac/dockerfile_rules.py
+        - Copy the pattern of an existing rule in the same file
+    validations:
+      required: true
+
+  - type: input
+    id: mentor
+    attributes:
+      label: Maintainer contact
+      description: Who answers questions on this issue (GitHub handle).

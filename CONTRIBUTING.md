@@ -15,32 +15,74 @@ The best ways to help:
 
 ## Table of contents
 
-- [Quick start (5 minutes)](#quick-start)
+- [Your first PR in 30 minutes](#your-first-pr-in-30-minutes)
 - [What to work on](#what-to-work-on)
 - [Development workflow](#development-workflow)
 - [Tests](#tests)
 - [Code style](#code-style)
 - [Dependency updates](#dependency-updates)
 - [Submitting a PR](#submitting-a-pr)
+- [What to expect from maintainers](#what-to-expect-from-maintainers)
 - [Architecture overview](#architecture-overview)
 - [Security reports](#security-reports)
 
 ---
 
-## Quick start
+## Your first PR in 30 minutes
+
+You do not need to understand the whole codebase to land a useful change. This
+path keeps the loop small.
+
+**1. Set up (about 5 minutes).** You need Python 3.11+ and
+[uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/msaad00/agent-bom.git
 cd agent-bom
-uv sync --extra dev-all
-uv run pre-commit install                          # wires ruff + ruff-format hooks
-uv run pytest tests/ -x -q                         # must be green before you start
+uv sync --extra dev                  # core workflow; use --extra dev-all for the full suite
+uv run pre-commit install            # ruff + ruff-format on every commit
+uv run agent-bom scan --demo --offline
 ```
 
-That's it. `agent-bom agents` now runs from your local checkout.
-Use `uv sync --extra dev` for a lighter core workflow (docs, skills, small
-fixes); `dev-all` is the supported full-suite contributor setup before larger
-code PRs.
+**2. Find where your change goes (about 5 minutes).** Open
+[`docs/CODE_MAP.md`](docs/CODE_MAP.md). It maps "I want to add X" to the
+subpackage that owns it. New Python files go in a subpackage, not directly
+under `src/agent_bom/`.
+
+**3. Run a narrow test, not the whole suite (about 5 minutes).** List the tests
+related to the files you changed, then run only those:
+
+```bash
+python scripts/pytest_ci_plan.py targeted src/agent_bom/parsers/python_parsers.py
+uv run pytest tests/test_manifest_parser_coverage.py -q   # one file from that list
+```
+
+**4. Run the checks that catch most review comments (about 5 minutes).**
+
+```bash
+uv run ruff check src tests && uv run ruff format --check src tests
+python scripts/check_package_layout.py   # no new top-level modules
+python scripts/check_architecture.py     # layer rules and size/complexity ratchet
+make preflight                           # only if you touched api/ routes or models
+```
+
+**5. Open the PR (about 10 minutes).** Use a conventional title
+(`fix(parsers): ...`), fill in the template, list the commands you ran, and sign
+off your commit (`git commit -s`). Draft PRs are welcome if you want early
+feedback on direction.
+
+**How CI gates work.** A change classifier runs first. Docs-only PRs skip the
+Python test shards, while code PRs run lint, mypy, the architecture and
+package-layout checks, sharded pytest and the Docker build. A red check names
+the script or test that failed, and you can run the same script locally. If a
+check says "The operation was canceled", a newer push superseded it. Re-run it
+instead of debugging.
+
+**Where to ask.** Ask placement or design questions in your issue or draft PR,
+open-ended ones in
+[GitHub Discussions](https://github.com/msaad00/agent-bom/discussions), and
+quick PR questions in `#contributors` on
+[Discord](https://discord.gg/3YmYPqKZh5).
 
 ---
 
@@ -55,6 +97,17 @@ picked up quickly, so an empty result is normal and does not mean the project is
 closed to contributions. When it is empty, take one of the standing tasks below,
 or open an issue proposing what you want to do — describing it first is welcome
 and saves you writing the wrong thing.
+
+### Good first contribution areas
+
+| Area | Where | Shape of a good first PR |
+|---|---|---|
+| Scanner importers | `src/agent_bom/parsers/external_scanners.py` | Map one more field or format from another tool's JSON/SARIF, with a fixture-based test |
+| IaC rules | `src/agent_bom/iac/` | One new Dockerfile, Kubernetes, Terraform or CloudFormation rule, with a passing and a failing fixture |
+| CSPM checks | `src/agent_bom/cloud/aws_cis/`, `azure_cis/`, `gcp_cis/` | One benchmark control, tested against mocked API responses |
+| MCP registry entries | `src/agent_bom/mcp_registry.json` | One server entry (see below) |
+| Docs fixes | `docs/`, `site-docs/` | Fix a stale command, path or link you tripped over |
+| UI | `ui/` | A small, screenshot-verified fix in light and dark themes |
 
 Typical good-first tasks:
 - **Add an MCP client** — add an `AgentType` member in [`src/agent_bom/models.py`](src/agent_bom/models.py), its per-platform config paths to `CONFIG_LOCATIONS` in [`src/agent_bom/discovery/__init__.py`](src/agent_bom/discovery/__init__.py), and a display label to `_DISPLAY_NAMES` in [`src/agent_bom/discovery/coverage.py`](src/agent_bom/discovery/coverage.py). A `CONFIG_LOCATIONS` entry maps the agent type to `{"Darwin": [...], "Linux": [...], "Windows": [...]}`; clients whose config is not JSON are dispatched by an explicit branch in `discover_global_configs`, not by a field on the entry.
@@ -214,14 +267,15 @@ This keeps update history readable for operators and makes package maintenance l
 2. **All tests pass:** `uv run pytest tests/ -x -q`
 3. **Lint clean:** `uv run ruff check src tests && uv run ruff format --check src tests`
 4. **PR description:** one-sentence summary, what changed, how to test it. If the PR resolves a GitHub issue, include `Closes #<issue-number>` in the PR body — GitHub will auto-close the issue when the PR merges.
-5. **One review required** — a maintainer will review within a few days.
+5. **One review required** — see [what to expect](#what-to-expect-from-maintainers).
 
 By submitting a pull request, you certify that your contribution is made under the terms of the Apache-2.0 license and that you have the right to submit it under those terms (Developer Certificate of Origin).
 
 CI checks that run on every PR:
-- `pytest` (all tests)
+- `pytest` (sharded; docs-only PRs skip it)
 - `ruff check` + `ruff format --check`
 - `mypy` type check
+- Architecture and package-layout checks (`scripts/check_architecture.py`, `scripts/check_package_layout.py`)
 - Version alignment (all version strings must match)
 - Docker build
 
@@ -238,9 +292,28 @@ Validation: CI + targeted local tests
 
 ---
 
+## What to expect from maintainers
+
+The project is maintained by a small team, so these are goals rather than an
+SLA (see [SUPPORT.md](SUPPORT.md)):
+
+- **First response on a PR or a "can I take this?" comment:** we aim for
+  within a few days. Around releases it can take longer.
+- **Review:** concrete and actionable. If a change belongs in a different
+  package or needs a smaller scope, we say so early rather than after several
+  rounds.
+- **Stalled PRs:** if you go quiet for a few weeks, a maintainer may finish
+  the PR, keeping your commits and credit, or close it with a note. You can
+  always reopen it.
+- **Scope we usually decline:** new top-level modules, new deployment targets
+  without an owner, and large refactors without a prior issue. Opening an issue
+  first saves you time.
+
+---
+
 ## Architecture overview
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system diagrams and the full module map.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system diagrams and [docs/CODE_MAP.md](docs/CODE_MAP.md) for where new code goes.
 
 **One product, shared evidence:** scanning, the self-hosted control plane, and
 runtime enforcement share inventory, findings, graph and audit contracts.

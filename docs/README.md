@@ -61,7 +61,7 @@ New here? Read [`START_HERE.md`](START_HERE.md) for role-based paths, then
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — system overview, layer rules, module notes
 - [`ARCHITECTURE_BOUNDARIES.md`](ARCHITECTURE_BOUNDARIES.md) · [`CHANGE_GUARDRAILS.md`](CHANGE_GUARDRAILS.md) — enforced boundaries and change gates
 - [`decisions/`](decisions/README.md) — architecture decision records
-- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) — repository map
+- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) — repository map · [`CODE_MAP.md`](CODE_MAP.md) — where new code goes
 - [`DATA_MODEL.md`](DATA_MODEL.md) · [`IDENTITY_AND_NAMING_CONTRACT.md`](IDENTITY_AND_NAMING_CONTRACT.md) · [`DISCOVERY_ENVELOPE.md`](DISCOVERY_ENVELOPE.md) — data model and identifiers
 - [`graph/CONTRACT.md`](graph/CONTRACT.md) · [`GRAPH_MIGRATION.md`](GRAPH_MIGRATION.md) — graph guarantees and limits
 - [`CONCURRENCY_AND_FAILURE_MODEL.md`](CONCURRENCY_AND_FAILURE_MODEL.md) · [`SESSION_FLOWS.md`](SESSION_FLOWS.md) — concurrency, failure and enforcement flows

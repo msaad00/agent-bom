@@ -51,13 +51,19 @@ module "eks" {
   count = var.create_cluster ? 1 : 0
 
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.8"
+  version = "~> 20.37"
 
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
   cluster_endpoint_public_access = true
   enable_irsa                    = true
+
+  # This platform uses managed node groups, not EKS Auto Mode.
+  enable_auto_mode_custom_tags = false
+  # The key is dedicated to this cluster. Keep its permission on the role
+  # rather than requiring a reusable, standalone IAM managed policy.
+  attach_cluster_encryption_policy = false
 
   vpc_id     = module.vpc[0].vpc_id
   subnet_ids = module.vpc[0].private_subnets
@@ -70,6 +76,21 @@ module "eks" {
       max_size       = var.node_max_size
     }
   }
+}
+
+resource "aws_iam_role_policy" "cluster_encryption" {
+  count = var.create_cluster ? 1 : 0
+
+  name = "${var.cluster_name}-encryption"
+  role = module.eks[0].cluster_iam_role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["kms:Encrypt", "kms:Decrypt", "kms:ListGrants", "kms:DescribeKey"]
+      Resource = module.eks[0].kms_key_arn
+    }]
+  })
 }
 
 ###############################################################################

@@ -18,6 +18,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Managed-node EKS bootstrap no longer requests an unused Auto Mode policy or a standalone cluster-encryption policy. Encryption permissions remain scoped to the cluster's KMS key through an inline role policy; the cluster-first bootstrap command includes that policy.
+
 - The top-level module guard (`scripts/check_package_layout.py`) now names a likely subpackage for each new `src/agent_bom/*.py` file and points to the new `docs/CODE_MAP.md`, which maps common changes to their owning packages, canonical models and layering rules. The guard has its own regression test.
 - `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
 - The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
@@ -34,6 +36,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [0.108.4] - 2026-10-09
 
 ### Fixed
+
+- Managed PostgreSQL initialization validates existing maintenance-role attributes without reapplying superuser-only flags. Unsafe existing roles fail initialization; pre-provisioned safe roles remain usable on RDS.
 
 - ClickHouse analytics now creates its database before selecting it for HTTP queries. Connecting to a fresh server no longer fails with `UNKNOWN_DATABASE`; bootstrap retains credentials and stops on authorization errors.
 

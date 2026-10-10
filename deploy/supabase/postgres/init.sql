@@ -885,19 +885,31 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_rls_maintenance') THEN
         CREATE ROLE agent_bom_rls_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS;
-    ELSE
-        ALTER ROLE agent_bom_rls_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_rls_maintenance'
+                  AND (rolcanlogin OR rolsuper OR rolbypassrls)) THEN
+        RAISE EXCEPTION 'agent_bom_rls_maintenance must be NOLOGIN NOSUPERUSER NOBYPASSRLS';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_maintenance') THEN
         CREATE ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS;
-    ELSE
-        ALTER ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_maintenance'
+                  AND (NOT rolcanlogin OR rolsuper OR rolbypassrls)) THEN
+        RAISE EXCEPTION 'agent_bom_maintenance must be LOGIN NOSUPERUSER NOBYPASSRLS';
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_app') THEN
         REVOKE agent_bom_rls_maintenance FROM agent_bom_app;
     END IF;
     GRANT agent_bom_rls_maintenance TO agent_bom_maintenance;
-    EXECUTE format('GRANT agent_bom_rls_maintenance TO %I WITH ADMIN OPTION', session_user);
+    -- PostgreSQL 16+ rejects a redundant ADMIN self-grant by a non-superuser.
+    -- Preserve an existing direct ADMIN membership; otherwise require the grant.
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_auth_members AS membership
+        JOIN pg_roles AS granted_role ON granted_role.oid = membership.roleid
+        JOIN pg_roles AS member_role ON member_role.oid = membership.member
+        WHERE granted_role.rolname = 'agent_bom_rls_maintenance'
+          AND member_role.rolname = session_user AND membership.admin_option
+    ) THEN
+        EXECUTE format('GRANT agent_bom_rls_maintenance TO %I WITH ADMIN OPTION', session_user);
+    END IF;
 END
 $$;
 

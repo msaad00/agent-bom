@@ -991,3 +991,17 @@ def test_live_decision_author_upgrade_keeps_legacy_rows_unattributed(monkeypatch
             else:
                 assert conn.execute("SELECT to_regclass('exceptions')").fetchone()[0] is None
         conn.rollback()  # fixture-only schemas and rows never persist
+
+
+def test_preprovisioned_maintenance_roles_are_validated_without_privileged_alter() -> None:
+    """RDS cannot reapply SUPERUSER attributes even to already safe roles."""
+    sql = (POSTGRES_DIR / "init.sql").read_text()
+    block = sql.split("-- TENANT RLS HELPERS + POLICIES", 1)[1].split("CREATE OR REPLACE FUNCTION", 1)[0]
+    for role, login, invalid_login in (
+        ("agent_bom_rls_maintenance", "NOLOGIN", "rolcanlogin"),
+        ("agent_bom_maintenance", "LOGIN", "NOT rolcanlogin"),
+    ):
+        assert f"ALTER ROLE {role}" not in block
+        assert f"CREATE ROLE {role} {login} NOSUPERUSER NOBYPASSRLS" in block
+        assert f"{invalid_login} OR rolsuper OR rolbypassrls" in block
+        assert f"RAISE EXCEPTION '{role} must be {login} NOSUPERUSER NOBYPASSRLS'" in block

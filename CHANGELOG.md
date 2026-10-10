@@ -21,6 +21,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
 - The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
 - `--external-scan` reports are now read with the shared parser size limit (`AGENT_BOM_MAX_MANIFEST_BYTES`) in the CLI and API scan paths.
+- The largest scanner engines are decomposed into named stages with no change to results: package vulnerability scanning (`scan_packages`), the cloned repository tree scan, the MCP `scan` tool body and the live Kubernetes posture scan. Each now reads as a short orchestrator over input preparation, version resolution, advisory lookups, enrichment and result assembly.
 
 ## [0.108.4] - 2026-10-09
 

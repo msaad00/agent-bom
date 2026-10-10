@@ -1,8 +1,8 @@
 site_name: agent-bom
 site_description: Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure
-site_url: https://msaad00.github.io/agent-bom
-repo_url: https://github.com/msaad00/agent-bom
-repo_name: msaad00/agent-bom
+site_url: https://koda-ai-studio.github.io/agent-bom
+repo_url: https://github.com/koda-ai-studio/agent-bom
+repo_name: koda-ai-studio/agent-bom
 edit_uri: edit/main/site-docs/
 docs_dir: site-docs
 
@@ -72,7 +72,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/msaad00/agent-bom
+      link: https://github.com/koda-ai-studio/agent-bom
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/agent-bom/
 

@@ -7,5 +7,5 @@ import { version } from "../package.json";
 it("pins first-run Docker and Action commands to the installed dashboard version", () => {
   render(<PersonaStartRoutes />);
   expect(screen.getByText(`docker run --rm agentbom/agent-bom:${version} scan --demo --offline`)).toBeInTheDocument();
-  expect(screen.getByText(`uses: msaad00/agent-bom@v${version}`)).toBeInTheDocument();
+  expect(screen.getByText(`uses: koda-ai-studio/agent-bom@v${version}`)).toBeInTheDocument();
 });

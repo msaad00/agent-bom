@@ -57,7 +57,7 @@ def iac():
       agent-iac validate inventory.json
 
     \b
-    Docs: https://msaad00.github.io/agent-bom/
+    Docs: https://koda-ai-studio.github.io/agent-bom/
     """
     pass
 

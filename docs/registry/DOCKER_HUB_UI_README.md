@@ -44,7 +44,7 @@ For Kubernetes, check out the repository and configure the
 and the identity, database, and ingress settings for your environment.
 
 [Product scenarios](https://github.com/msaad00/agent-bom/blob/main/docs/GALLERY.md) ·
-[Documentation](https://msaad00.github.io/agent-bom/) ·
+[Documentation](https://koda-ai-studio.github.io/agent-bom/) ·
 [API and scanner image](https://hub.docker.com/r/agentbom/agent-bom)
 
 <details>

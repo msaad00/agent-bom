@@ -260,6 +260,6 @@ names for local builds from this repo, not a second published product line.
 
 - GitHub: https://github.com/msaad00/agent-bom
 - PyPI: https://pypi.org/project/agent-bom/
-- Docs: https://msaad00.github.io/agent-bom/
+- Docs: https://koda-ai-studio.github.io/agent-bom/
 - GitHub Action: https://github.com/marketplace/actions/agent-bom
 - Pre-commit hooks: https://github.com/msaad00/agent-bom/blob/main/.pre-commit-hooks.yaml

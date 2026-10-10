@@ -56,7 +56,7 @@ prompt file. See `docs/FIRST_RUN.md` in the repository for the guided flow.
 <details>
 <summary><b>See the terminal demo</b></summary>
 
-![agent-bom demo](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif)
+![agent-bom demo](https://raw.githubusercontent.com/koda-ai-studio/agent-bom/main/docs/images/demo-latest.gif)
 
 </details>
 
@@ -67,7 +67,7 @@ The views retain the exact component and scan snapshot, expose recorded relation
 and source evidence, and export loaded evidence with completeness receipts. Control
 mappings do not establish evaluated passes or certification.
 
-From a source checkout, [run the connected-BOM example](https://github.com/msaad00/agent-bom/tree/main/examples/connected-bom).
+From a source checkout, [run the connected-BOM example](https://github.com/koda-ai-studio/agent-bom/tree/main/examples/connected-bom).
 It retains before/after SQLite snapshots: a changed dependency input removes one
 pinned advisory finding while an unrelated synthetic cloud check remains failed.
 This bounded example does not change a deployment or qualify a cloud account.
@@ -97,7 +97,7 @@ command exits with the matching install hint.
 Self-hosted pilot:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+curl -fsSL https://raw.githubusercontent.com/koda-ai-studio/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
 docker compose -f docker-compose.pilot.yml up -d
 # Dashboard -> http://localhost:3000
 ```
@@ -114,11 +114,11 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 ### Dashboard
 
-![agent-bom dashboard overview](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
+![agent-bom dashboard overview](https://raw.githubusercontent.com/koda-ai-studio/agent-bom/main/docs/images/dashboard-live.png)
 
 ### Agent mesh graph
 
-![agent-bom agent mesh graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+![agent-bom agent mesh graph](https://raw.githubusercontent.com/koda-ai-studio/agent-bom/main/docs/images/mesh-live.png)
 
 ## What it scans
 
@@ -150,18 +150,18 @@ explicitly enable an outbound integration.
 
 ## How the data moves
 
-![How agent-bom works](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg)
+![How agent-bom works](https://raw.githubusercontent.com/koda-ai-studio/agent-bom/main/docs/images/scan-pipeline-light.svg)
 
 ## Blast radius
 
-![Blast radius](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg)
+![Blast radius](https://raw.githubusercontent.com/koda-ai-studio/agent-bom/main/docs/images/blast-radius-light.svg)
 
 ## Links
 
-- [GitHub](https://github.com/msaad00/agent-bom)
+- [GitHub](https://github.com/koda-ai-studio/agent-bom)
 - [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom)
-- [Documentation](https://github.com/msaad00/agent-bom#readme)
-- [Product brief](https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md)
-- [Verified metrics](https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md)
-- [Enterprise controls map](https://github.com/msaad00/agent-bom/blob/main/docs/ENTERPRISE.md)
+- [Documentation](https://github.com/koda-ai-studio/agent-bom#readme)
+- [Product brief](https://github.com/koda-ai-studio/agent-bom/blob/main/docs/PRODUCT_BRIEF.md)
+- [Verified metrics](https://github.com/koda-ai-studio/agent-bom/blob/main/docs/PRODUCT_METRICS.md)
+- [Enterprise controls map](https://github.com/koda-ai-studio/agent-bom/blob/main/docs/ENTERPRISE.md)
 - [Discord](https://discord.gg/3YmYPqKZh5)

@@ -155,7 +155,7 @@ release CI:
 cosign verify-blob "agent_bom-${VERSION}-py3-none-any.whl" \
   --bundle "agent_bom-${VERSION}-py3-none-any.whl.sigstore.json" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp 'https://github.com/msaad00/agent-bom/.github/workflows/release.yml@.*'
+  --certificate-identity-regexp '^https://github\.com/(msaad00|koda-ai-studio)/agent-bom/\.github/workflows/release\.yml@.*$'
 ```
 
 Do the same for the source tarball if you consume that artifact:
@@ -164,7 +164,7 @@ Do the same for the source tarball if you consume that artifact:
 cosign verify-blob "agent_bom-${VERSION}.tar.gz" \
   --bundle "agent_bom-${VERSION}.tar.gz.sigstore.json" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp 'https://github.com/msaad00/agent-bom/.github/workflows/release.yml@.*'
+  --certificate-identity-regexp '^https://github\.com/(msaad00|koda-ai-studio)/agent-bom/\.github/workflows/release\.yml@.*$'
 ```
 
 ## Inspect SLSA provenance
@@ -312,3 +312,5 @@ pytest tests/test_graph_schema_ui_parity.py tests/test_graph_edge_counts.py test
 
 This is the release trust baseline. Runtime trust, container attestations, and
 registry-specific provenance still live in their own workflows and docs.
+
+Repository transfers do not rewrite certificate identities. The default verifier accepts the current `koda-ai-studio` release workflow and the historical `msaad00` release workflow so older signed artifacts remain verifiable. Other repositories and workflow names fail verification unless an operator explicitly configures a different trust policy.

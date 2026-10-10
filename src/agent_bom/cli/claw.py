@@ -59,7 +59,7 @@ def claw():
       agent-claw report analytics --days 30
 
     \b
-    Docs: https://msaad00.github.io/agent-bom/
+    Docs: https://koda-ai-studio.github.io/agent-bom/
     """
     pass
 

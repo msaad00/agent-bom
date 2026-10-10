@@ -248,7 +248,9 @@ def test_check_pypi_provenance_partial_release_is_not_verified():
 
 
 def test_cosign_defaults_pin_release_workflow_identity():
-    assert _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP == (r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*")
+    assert _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP == (
+        r"^https://github\.com/(msaad00|koda-ai-studio)/agent-bom/\.github/workflows/release\.yml@.*$"
+    )
     assert _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER == "https://token.actions.githubusercontent.com"
 
 

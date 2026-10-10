@@ -59,7 +59,7 @@ def cloud():
       agent-cloud posture                Unified cross-cloud summary
 
     \b
-    Docs: https://msaad00.github.io/agent-bom/
+    Docs: https://koda-ai-studio.github.io/agent-bom/
     """
     pass
 

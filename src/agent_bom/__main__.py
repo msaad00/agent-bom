@@ -18,7 +18,7 @@ def version_message() -> str:
         f"agent-bom {__version__}\n"
         "Open security scanner for AI infrastructure\n"
         f"Python {sys.version.split()[0]} · {sys.platform}\n"
-        "Docs:  https://msaad00.github.io/agent-bom/"
+        "Docs:  https://koda-ai-studio.github.io/agent-bom/"
     )
 
 

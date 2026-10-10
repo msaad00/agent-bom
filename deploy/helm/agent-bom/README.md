@@ -173,7 +173,7 @@ Canonical env-var reference: [`docs/operations/ENV_VARS.md`](../../../docs/opera
 
 ## Further reading
 
-- [Packaged API + UI control plane](https://msaad00.github.io/agent-bom/deployment/control-plane-helm/) — topology, secrets, ingress
-- [Kubernetes deployment](https://msaad00.github.io/agent-bom/deployment/kubernetes/) — raw manifests vs Helm
-- [Deployment overview](https://msaad00.github.io/agent-bom/deployment/overview/) — choose laptop, compose, EKS, or Snowflake path
-- [Vanilla EKS quickstart](https://msaad00.github.io/agent-bom/deployment/eks-vanilla-quickstart/) — paved production rollout
+- [Packaged API + UI control plane](https://koda-ai-studio.github.io/agent-bom/deployment/control-plane-helm/) — topology, secrets, ingress
+- [Kubernetes deployment](https://koda-ai-studio.github.io/agent-bom/deployment/kubernetes/) — raw manifests vs Helm
+- [Deployment overview](https://koda-ai-studio.github.io/agent-bom/deployment/overview/) — choose laptop, compose, EKS, or Snowflake path
+- [Vanilla EKS quickstart](https://koda-ai-studio.github.io/agent-bom/deployment/eks-vanilla-quickstart/) — paved production rollout

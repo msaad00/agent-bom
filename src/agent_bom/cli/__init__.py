@@ -101,7 +101,7 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
     Tip: `agent-bom -h` groups commands by scanning, runtime, MCP, reporting, and governance.
 
     \b
-    Docs:  https://msaad00.github.io/agent-bom/
+    Docs:  https://koda-ai-studio.github.io/agent-bom/
     """
     if profile:
         import os as _os

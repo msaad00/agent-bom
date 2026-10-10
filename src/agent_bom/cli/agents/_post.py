@@ -252,7 +252,7 @@ def run_integrations(
 _FAIL_CLOSED_SEVERITIES = frozenset({"unknown", "none"})
 
 # Published home of the full CLI exit-code / HTTP-status contract.
-EXIT_CODE_CONTRACT_URL = "https://msaad00.github.io/agent-bom/reference/exit-codes/"
+EXIT_CODE_CONTRACT_URL = "https://koda-ai-studio.github.io/agent-bom/reference/exit-codes/"
 
 
 def _fail_gate_meets(sev: str, threshold: int) -> bool:

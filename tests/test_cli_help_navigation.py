@@ -58,7 +58,7 @@ def test_docs_links_point_at_the_documentation_site():
     from agent_bom.cli.iac import iac
     from agent_bom.cli.shield import shield
 
-    docs_site = "https://msaad00.github.io/agent-bom/"
+    docs_site = "https://koda-ai-studio.github.io/agent-bom/"
     cases = [(main, ["--help"]), (main, ["--version"]), (cloud, ["--help"]), (iac, ["--help"]), (claw, ["--help"]), (shield, ["--help"])]
     for command, args in cases:
         result = CliRunner().invoke(command, args)

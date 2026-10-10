@@ -53,6 +53,10 @@ Supported table names are `webhook_subscriptions`, `dataset_versions`,
 `gateway_policies`, `exceptions`, `scim_users` and `scim_groups`. The `compliance_hub` selection
 restores the complete seven-table compliance snapshot as one group.
 
+Scan finding snapshots (`scan_snapshot_jobs`, `scan_snapshot_rows`) are derived
+from scan jobs and are not imported. After the jobs are restored, rebuild them
+with `python -m agent_bom.api.scan_snapshot backfill --tenant <tenant_id>`.
+
 Select both access-review tables together. Campaign counts must match their
 items; existing decisions require their original actor and timestamp. Source
 credential references must already exist in the same target tenant or be included

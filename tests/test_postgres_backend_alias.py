@@ -24,6 +24,7 @@ import pytest
             "PostgresTenantScoreConfigStore",
         ),
         ("stores", "_get_scim_store", "_scim_store", "postgres_scim", "PostgresSCIMStore"),
+        ("scan_snapshot_store", "get_scan_snapshot_store", "_default_store", "postgres_scan_snapshot", "PostgresScanSnapshotStore"),
         ("stores", "_get_trend_store", "_trend_store", "postgres_store", "PostgresTrendStore"),
         ("stores", "_get_graph_store", "_graph_store", "postgres_store", "PostgresGraphStore"),
         ("auth", "get_key_store", "_key_store", "postgres_access", "PostgresKeyStore"),

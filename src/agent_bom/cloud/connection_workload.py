@@ -13,12 +13,14 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from agent_bom.api.connection_store import CloudConnectionRecord
 from agent_bom.cloud.connection_broker import ConnectionBrokerError
+
+if TYPE_CHECKING:
+    from agent_bom.api.connection_store import CloudConnectionRecord
 
 _MODES = {"azure": {"managed_identity", "workload_identity"}, "gcp": {"workload_identity"}, "snowflake": {"workload_identity"}}
 _READ_ONLY = "https://www.googleapis.com/auth/cloud-platform.read-only"

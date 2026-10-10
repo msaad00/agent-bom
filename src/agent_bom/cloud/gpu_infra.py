@@ -249,6 +249,110 @@ def _extract_cuda_versions(labels: dict[str, str]) -> tuple[str | None, str | No
     return cuda_version, cudnn_version
 
 
+def _cuda_versions_from(labels: dict[str, str], env_list: list[str]) -> tuple[str | None, str | None]:
+    """CUDA/cuDNN versions from labels, falling back to ``CUDA_VERSION``/``CUDNN_VERSION`` env."""
+    cuda_version, cudnn_version = _extract_cuda_versions(labels)
+    if not cuda_version:
+        for env in env_list:
+            if env.startswith("CUDA_VERSION="):
+                cuda_version = env.split("=", 1)[1].strip()
+            elif env.startswith("CUDNN_VERSION="):
+                cudnn_version = env.split("=", 1)[1].strip()
+    return cuda_version, cudnn_version
+
+
+def _container_gpu_requested(host_config: dict) -> bool:
+    """True when DeviceRequests or the container runtime explicitly assign a GPU."""
+    device_requests = host_config.get("DeviceRequests") or []
+    gpu_requested = any(
+        dr.get("Driver") in ("nvidia", "gpu")
+        or dr.get("Capabilities")
+        and any("gpu" in cap_list for cap_list in (dr.get("Capabilities") or []))
+        for dr in device_requests
+    )
+    runtime = host_config.get("Runtime", "")
+    if runtime in ("nvidia", "nvidia-container-runtime"):
+        gpu_requested = True
+    return gpu_requested
+
+
+def _classify_gpu_vendor(
+    image: str, env_name_set: set[str], host_config: dict, gpu_requested: bool, cuda_version: str | None
+) -> tuple[str, bool, bool]:
+    """Return ``(gpu_vendor, is_gpu, is_nvidia_base)`` from image, env names and device mounts."""
+    is_nvidia = _is_nvidia_image(image)
+    is_amd = _is_amd_image(image)
+
+    # Device mounts (AMD ROCm = /dev/kfd, Intel/AMD = /dev/dri)
+    devices = host_config.get("Devices") or []
+    device_paths = [d.get("PathOnHost", "") for d in devices if isinstance(d, dict)]
+
+    has_kfd = any("/dev/kfd" in p for p in device_paths)
+    has_dri = any("/dev/dri" in p for p in device_paths)
+    has_amd_env = bool(env_name_set & set(_AMD_ENV_VARS))
+    has_intel_env = bool(env_name_set & set(_INTEL_ENV_VARS))
+    has_nvidia_env = bool(env_name_set & set(_NVIDIA_ENV_VARS))
+
+    # Windows GPU: device class GUID + process isolation
+    # https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/gpu-acceleration
+    is_windows_gpu = any(_WINDOWS_GPU_DEVICE_CLASS.lower() in p.lower() for p in device_paths)
+
+    gpu_vendor = "unknown"
+    if is_nvidia or gpu_requested or has_nvidia_env or cuda_version:
+        gpu_vendor = "nvidia"
+    elif has_kfd or is_amd or has_amd_env:
+        gpu_vendor = "amd"
+    elif is_windows_gpu:
+        gpu_vendor = "windows"
+    elif has_intel_env or (has_dri and not has_kfd and not is_nvidia):
+        gpu_vendor = "intel"
+
+    is_gpu = (
+        is_nvidia or is_amd or gpu_requested or cuda_version or has_kfd or has_amd_env or has_intel_env or has_nvidia_env or is_windows_gpu
+    )
+    return gpu_vendor, bool(is_gpu), is_nvidia
+
+
+def _parse_gpu_container(info: dict) -> GpuContainer | None:
+    """Build a GpuContainer from one ``docker inspect`` record, or None if it has no GPU."""
+    cid = info.get("Id", "")[:12]
+    name = (info.get("Name") or "").lstrip("/")
+    image = (info.get("Config", {}) or {}).get("Image", "")
+    status = (info.get("State", {}) or {}).get("Status", "unknown")
+
+    labels: dict[str, str] = (info.get("Config", {}) or {}).get("Labels") or {}
+    env_list: list[str] = (info.get("Config", {}) or {}).get("Env") or []
+
+    # Extract env var names (never values — security)
+    env_names = [e.split("=", 1)[0] for e in env_list if "=" in e]
+    cuda_version, cudnn_version = _cuda_versions_from(labels, env_list)
+
+    host_config = info.get("HostConfig", {}) or {}
+    gpu_requested = _container_gpu_requested(host_config)
+    gpu_vendor, is_gpu, is_nvidia = _classify_gpu_vendor(image, set(env_names), host_config, gpu_requested, cuda_version)
+
+    # Port bindings
+    port_bindings = info.get("HostConfig", {}).get("PortBindings") or {}
+    ports = list(port_bindings.keys())
+
+    if not is_gpu:
+        return None
+    return GpuContainer(
+        container_id=cid,
+        name=name,
+        image=image,
+        status=status,
+        gpu_vendor=gpu_vendor,
+        is_nvidia_base=is_nvidia,
+        cuda_version=cuda_version,
+        cudnn_version=cudnn_version,
+        gpu_requested=gpu_requested,
+        labels=labels,
+        env_vars=env_names,
+        ports=ports,
+    )
+
+
 def discover_docker_gpu_containers() -> tuple[list[GpuContainer], list[str]]:
     """Discover GPU-enabled containers from the local Docker daemon.
 
@@ -291,108 +395,12 @@ def discover_docker_gpu_containers() -> tuple[list[GpuContainer], list[str]]:
 
     for info in inspect_result:
         try:
-            cid = info.get("Id", "")[:12]
-            name = (info.get("Name") or "").lstrip("/")
-            image = (info.get("Config", {}) or {}).get("Image", "")
-            status = (info.get("State", {}) or {}).get("Status", "unknown")
-
-            labels: dict[str, str] = (info.get("Config", {}) or {}).get("Labels") or {}
-            env_list: list[str] = (info.get("Config", {}) or {}).get("Env") or []
-
-            # Extract env var names (never values — security)
-            env_names = [e.split("=", 1)[0] for e in env_list if "=" in e]
-            env_name_set = set(env_names)
-
-            cuda_version, cudnn_version = _extract_cuda_versions(labels)
-
-            # Also check env vars for CUDA hints
-            if not cuda_version:
-                for env in env_list:
-                    if env.startswith("CUDA_VERSION="):
-                        cuda_version = env.split("=", 1)[1].strip()
-                    elif env.startswith("CUDNN_VERSION="):
-                        cudnn_version = env.split("=", 1)[1].strip()
-
-            # Check if GPU is explicitly assigned
-            host_config = info.get("HostConfig", {}) or {}
-            device_requests = host_config.get("DeviceRequests") or []
-            gpu_requested = any(
-                dr.get("Driver") in ("nvidia", "gpu")
-                or dr.get("Capabilities")
-                and any("gpu" in cap_list for cap_list in (dr.get("Capabilities") or []))
-                for dr in device_requests
-            )
-
-            # Also check runtime
-            runtime = host_config.get("Runtime", "")
-            if runtime in ("nvidia", "nvidia-container-runtime"):
-                gpu_requested = True
-
-            # ─── Vendor detection ────────────────────────────────────────
-            is_nvidia = _is_nvidia_image(image)
-            is_amd = _is_amd_image(image)
-
-            # Device mounts (AMD ROCm = /dev/kfd, Intel/AMD = /dev/dri)
-            devices = host_config.get("Devices") or []
-            device_paths = [d.get("PathOnHost", "") for d in devices if isinstance(d, dict)]
-
-            has_kfd = any("/dev/kfd" in p for p in device_paths)
-            has_dri = any("/dev/dri" in p for p in device_paths)
-            has_amd_env = bool(env_name_set & set(_AMD_ENV_VARS))
-            has_intel_env = bool(env_name_set & set(_INTEL_ENV_VARS))
-            has_nvidia_env = bool(env_name_set & set(_NVIDIA_ENV_VARS))
-
-            # Windows GPU: device class GUID + process isolation
-            # https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/gpu-acceleration
-            is_windows_gpu = any(_WINDOWS_GPU_DEVICE_CLASS.lower() in p.lower() for p in device_paths)
-
-            # Determine vendor
-            gpu_vendor = "unknown"
-            if is_nvidia or gpu_requested or has_nvidia_env or cuda_version:
-                gpu_vendor = "nvidia"
-            elif has_kfd or is_amd or has_amd_env:
-                gpu_vendor = "amd"
-            elif is_windows_gpu:
-                gpu_vendor = "windows"
-            elif has_intel_env or (has_dri and not has_kfd and not is_nvidia):
-                gpu_vendor = "intel"
-
-            is_gpu = (
-                is_nvidia
-                or is_amd
-                or gpu_requested
-                or cuda_version
-                or has_kfd
-                or has_amd_env
-                or has_intel_env
-                or has_nvidia_env
-                or is_windows_gpu
-            )
-
-            # Port bindings
-            port_bindings = info.get("HostConfig", {}).get("PortBindings") or {}
-            ports = list(port_bindings.keys())
-
-            if is_gpu:
-                containers.append(
-                    GpuContainer(
-                        container_id=cid,
-                        name=name,
-                        image=image,
-                        status=status,
-                        gpu_vendor=gpu_vendor,
-                        is_nvidia_base=is_nvidia,
-                        cuda_version=cuda_version,
-                        cudnn_version=cudnn_version,
-                        gpu_requested=gpu_requested,
-                        labels=labels,
-                        env_vars=env_names,
-                        ports=ports,
-                    )
-                )
+            container = _parse_gpu_container(info)
         except Exception as exc:  # noqa: BLE001
             logger.debug("Error parsing container info: %s", sanitize_text(exc))
             continue
+        if container is not None:
+            containers.append(container)
 
     return containers, warnings
 
@@ -839,6 +847,74 @@ async def scan_gpu_infra(
 # ─── Agent conversion (for scan output) ──────────────────────────────────────
 
 
+def _gpu_container_agent(c: GpuContainer) -> Agent:
+    """Build the agent for one GPU container, with CUDA/cuDNN versions as packages."""
+    packages: list[Package] = []
+    for pkg_name, version in (("cuda-toolkit", c.cuda_version), ("cudnn", c.cudnn_version)):
+        if version:
+            packages.append(
+                Package(
+                    name=pkg_name,
+                    version=version,
+                    ecosystem="container",
+                    purl=build_package_purl(ecosystem="container", name=pkg_name, version=version),
+                )
+            )
+
+    server = MCPServer(name=c.image, command="", transport=TransportType.STDIO, packages=packages)
+    cloud_origin = {
+        "provider": "gpu",
+        "service": "container_runtime",
+        "resource_type": c.gpu_vendor or "unknown",
+        "resource_id": c.container_id,
+        "resource_name": c.name or c.container_id,
+        "scope": {
+            "image": c.image,
+            "gpu_requested": c.gpu_requested,
+            "cuda_version": c.cuda_version,
+            "cudnn_version": c.cudnn_version,
+        },
+    }
+    return Agent(
+        name=c.name or c.container_id,
+        agent_type=AgentType.CUSTOM,
+        config_path=f"docker://{c.container_id}",
+        source="gpu_infra",
+        mcp_servers=[server],
+        metadata={"cloud_origin": cloud_origin},
+    )
+
+
+def _k8s_gpu_cluster_agent(report: GpuInfraReport) -> Agent:
+    """Aggregate the report's K8s GPU nodes into one synthetic cluster agent."""
+    total_gpus = sum(n.gpu_capacity for n in report.gpu_nodes)
+    vendors = sorted({n.gpu_vendor for n in report.gpu_nodes if n.gpu_vendor})
+    node_name = f"k8s-gpu-cluster ({len(report.gpu_nodes)} nodes, {total_gpus} GPUs)"
+    node_server = MCPServer(name=node_name, command="", transport=TransportType.STDIO, packages=[])
+    cloud_origin = {
+        "provider": "gpu",
+        "service": "kubernetes",
+        "resource_type": vendors[0] if len(vendors) == 1 else "mixed" if vendors else "unknown",
+        "resource_id": "k8s-gpu-cluster",
+        "resource_name": "k8s-gpu-cluster",
+        "scope": {
+            "node_count": len(report.gpu_nodes),
+            "gpu_capacity_total": total_gpus,
+            "vendors": vendors,
+            "driver_cve_count": len(report.driver_findings),
+            "firmware_cve_count": len(report.firmware_findings),
+        },
+    }
+    return Agent(
+        name="k8s-gpu-cluster",
+        agent_type=AgentType.CUSTOM,
+        config_path="k8s://gpu-nodes",
+        source="gpu_infra",
+        mcp_servers=[node_server],
+        metadata={"cloud_origin": cloud_origin},
+    )
+
+
 def gpu_infra_to_agents(report: GpuInfraReport) -> list[Agent]:
     """Convert GpuInfraReport to Agent objects for inclusion in AIBOMReport.
 
@@ -849,94 +925,12 @@ def gpu_infra_to_agents(report: GpuInfraReport) -> list[Agent]:
     into ``cloud_resource`` lineage nodes via the existing promoter in
     ``src/agent_bom/graph/builder.py``.
     """
-    agents: list[Agent] = []
-
-    for c in report.gpu_containers:
-        # Build package list from CUDA/cuDNN versions
-        packages: list[Package] = []
-        if c.cuda_version:
-            packages.append(
-                Package(
-                    name="cuda-toolkit",
-                    version=c.cuda_version,
-                    ecosystem="container",
-                    purl=build_package_purl(ecosystem="container", name="cuda-toolkit", version=c.cuda_version),
-                )
-            )
-        if c.cudnn_version:
-            packages.append(
-                Package(
-                    name="cudnn",
-                    version=c.cudnn_version,
-                    ecosystem="container",
-                    purl=build_package_purl(ecosystem="container", name="cudnn", version=c.cudnn_version),
-                )
-            )
-
-        server = MCPServer(
-            name=c.image,
-            command="",
-            transport=TransportType.STDIO,
-            packages=packages,
-        )
-        cloud_origin = {
-            "provider": "gpu",
-            "service": "container_runtime",
-            "resource_type": c.gpu_vendor or "unknown",
-            "resource_id": c.container_id,
-            "resource_name": c.name or c.container_id,
-            "scope": {
-                "image": c.image,
-                "gpu_requested": c.gpu_requested,
-                "cuda_version": c.cuda_version,
-                "cudnn_version": c.cudnn_version,
-            },
-        }
-        agent = Agent(
-            name=c.name or c.container_id,
-            agent_type=AgentType.CUSTOM,
-            config_path=f"docker://{c.container_id}",
-            source="gpu_infra",
-            mcp_servers=[server],
-            metadata={"cloud_origin": cloud_origin},
-        )
-        agents.append(agent)
+    agents = [_gpu_container_agent(c) for c in report.gpu_containers]
 
     # Aggregate K8s GPU nodes as a single agent. Lineage promotion happens at
     # the cluster level so dashboards see one cloud_resource per cluster, not
     # one per GPU node — node-level facts live in the scope envelope.
     if report.gpu_nodes:
-        total_gpus = sum(n.gpu_capacity for n in report.gpu_nodes)
-        vendors = sorted({n.gpu_vendor for n in report.gpu_nodes if n.gpu_vendor})
-        node_server = MCPServer(
-            name=f"k8s-gpu-cluster ({len(report.gpu_nodes)} nodes, {total_gpus} GPUs)",
-            command="",
-            transport=TransportType.STDIO,
-            packages=[],
-        )
-        cloud_origin = {
-            "provider": "gpu",
-            "service": "kubernetes",
-            "resource_type": vendors[0] if len(vendors) == 1 else "mixed" if vendors else "unknown",
-            "resource_id": "k8s-gpu-cluster",
-            "resource_name": "k8s-gpu-cluster",
-            "scope": {
-                "node_count": len(report.gpu_nodes),
-                "gpu_capacity_total": total_gpus,
-                "vendors": vendors,
-                "driver_cve_count": len(report.driver_findings),
-                "firmware_cve_count": len(report.firmware_findings),
-            },
-        }
-        agents.append(
-            Agent(
-                name="k8s-gpu-cluster",
-                agent_type=AgentType.CUSTOM,
-                config_path="k8s://gpu-nodes",
-                source="gpu_infra",
-                mcp_servers=[node_server],
-                metadata={"cloud_origin": cloud_origin},
-            )
-        )
+        agents.append(_k8s_gpu_cluster_agent(report))
 
     return agents

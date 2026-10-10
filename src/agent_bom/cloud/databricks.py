@@ -72,125 +72,8 @@ def discover(
 
     resolved_host = host or os.environ.get("DATABRICKS_HOST", "")
 
-    # ── Clusters + Libraries ──────────────────────────────────────────────
-    try:
-        clusters = list(ws.clusters.list())
-    except PermissionDenied:
-        warnings.append("Access denied for Databricks clusters API. Check workspace permissions.")
-        clusters = []
-    except Exception as exc:
-        warnings.append(f"Could not list Databricks clusters: {exc}")
-        clusters = []
-
-    for cluster in clusters:
-        cluster_id = getattr(cluster, "cluster_id", "") or ""
-        cluster_name = getattr(cluster, "cluster_name", "") or cluster_id
-        state = getattr(cluster, "state", None)
-
-        # Only scan running or terminated (recently used) clusters
-        state_str = str(state).upper() if state else ""
-        lifecycle_state = normalize_cloud_lifecycle_state(
-            provider="databricks",
-            service="clusters",
-            resource_type="cluster",
-            raw_state=state_str,
-        )
-        if lifecycle_state is None:
-            continue
-
-        packages = _get_cluster_packages(ws, cluster_id, warnings)
-        if not packages:
-            continue
-
-        server = MCPServer(
-            name=f"cluster-libs:{cluster_id}",
-            command="spark",
-            args=[cluster_id],
-            transport=TransportType.UNKNOWN,
-            packages=packages,
-        )
-        agent = Agent(
-            name=f"databricks-cluster:{cluster_name}",
-            agent_type=AgentType.CUSTOM,
-            config_path=f"{resolved_host}/#/setting/clusters/{cluster_id}/configuration",
-            source="databricks",
-            mcp_servers=[server],
-            metadata={
-                "cloud_origin": build_cloud_origin(
-                    provider="databricks",
-                    service="clusters",
-                    resource_type="cluster",
-                    resource_id=cluster_id,
-                    resource_name=cluster_name,
-                    raw_identity={"cluster_id": cluster_id, "cluster_name": cluster_name},
-                ),
-                "cloud_state": build_cloud_state(
-                    provider="databricks",
-                    service="clusters",
-                    resource_type="cluster",
-                    lifecycle_state=lifecycle_state,
-                    raw_state=state_str,
-                    state_source="cluster.state",
-                ),
-            },
-        )
-        agents.append(agent)
-
-    # ── Model Serving Endpoints ───────────────────────────────────────────
-    try:
-        endpoints = list(ws.serving_endpoints.list())
-        for ep in endpoints:
-            ep_name = getattr(ep, "name", "unknown")
-            ep_state = getattr(ep, "state", None)
-            # ep_state.ready is an EndpointStateReady enum — use .value to get
-            # the raw string ("READY" / "NOT_READY") rather than the repr.
-            ready_enum = getattr(ep_state, "ready", None) if ep_state else None
-            state_str = getattr(ready_enum, "value", str(ready_enum or "")).upper()
-            lifecycle_state = normalize_cloud_lifecycle_state(
-                provider="databricks",
-                service="model-serving",
-                resource_type="serving-endpoint",
-                raw_state=state_str,
-            )
-            if lifecycle_state is None:
-                continue
-
-            server = MCPServer(
-                name=f"serving:{ep_name}",
-                command="model-serving",
-                transport=TransportType.STREAMABLE_HTTP,
-            )
-            agent = Agent(
-                name=f"databricks-serving:{ep_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"{resolved_host}/ml/endpoints/{ep_name}",
-                source="databricks",
-                mcp_servers=[server],
-                metadata={
-                    "cloud_origin": build_cloud_origin(
-                        provider="databricks",
-                        service="model-serving",
-                        resource_type="serving-endpoint",
-                        resource_id=ep_name,
-                        resource_name=ep_name,
-                        raw_identity={"name": ep_name},
-                    ),
-                    "cloud_state": build_cloud_state(
-                        provider="databricks",
-                        service="model-serving",
-                        resource_type="serving-endpoint",
-                        lifecycle_state=lifecycle_state,
-                        raw_state=state_str,
-                        state_source="state.ready",
-                    ),
-                },
-            )
-            agents.append(agent)
-
-    except PermissionDenied:
-        warnings.append("Access denied for Databricks model serving API.")
-    except Exception as exc:
-        warnings.append(f"Could not list Databricks serving endpoints: {exc}")
+    agents.extend(_discover_cluster_agents(ws, resolved_host, warnings, PermissionDenied))
+    agents.extend(_discover_serving_agents(ws, resolved_host, warnings, PermissionDenied))
 
     # Per-run discovery envelope (#2083 PR B).
     scope: list[str] = []
@@ -210,6 +93,158 @@ def discover(
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
     return agents, warnings
+
+
+def _discover_cluster_agents(
+    ws: Any,
+    resolved_host: str,
+    warnings: list[str],
+    permission_denied: Any,
+) -> list[Agent]:
+    """Build one agent per in-scope cluster that has installed libraries."""
+    agents: list[Agent] = []
+    # ── Clusters + Libraries ──────────────────────────────────────────────
+    try:
+        clusters = list(ws.clusters.list())
+    except permission_denied:
+        warnings.append("Access denied for Databricks clusters API. Check workspace permissions.")
+        clusters = []
+    except Exception as exc:
+        warnings.append(f"Could not list Databricks clusters: {exc}")
+        clusters = []
+
+    for cluster in clusters:
+        agent = _cluster_agent(ws, cluster, resolved_host, warnings)
+        if agent is not None:
+            agents.append(agent)
+    return agents
+
+
+def _cluster_agent(ws: Any, cluster: Any, resolved_host: str, warnings: list[str]) -> Agent | None:
+    """Build the agent for a single cluster, or ``None`` when it is skipped."""
+    cluster_id = getattr(cluster, "cluster_id", "") or ""
+    cluster_name = getattr(cluster, "cluster_name", "") or cluster_id
+    state = getattr(cluster, "state", None)
+
+    # Only scan running or terminated (recently used) clusters
+    state_str = str(state).upper() if state else ""
+    lifecycle_state = normalize_cloud_lifecycle_state(
+        provider="databricks",
+        service="clusters",
+        resource_type="cluster",
+        raw_state=state_str,
+    )
+    if lifecycle_state is None:
+        return None
+
+    packages = _get_cluster_packages(ws, cluster_id, warnings)
+    if not packages:
+        return None
+
+    server = MCPServer(
+        name=f"cluster-libs:{cluster_id}",
+        command="spark",
+        args=[cluster_id],
+        transport=TransportType.UNKNOWN,
+        packages=packages,
+    )
+    return Agent(
+        name=f"databricks-cluster:{cluster_name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"{resolved_host}/#/setting/clusters/{cluster_id}/configuration",
+        source="databricks",
+        mcp_servers=[server],
+        metadata={
+            "cloud_origin": build_cloud_origin(
+                provider="databricks",
+                service="clusters",
+                resource_type="cluster",
+                resource_id=cluster_id,
+                resource_name=cluster_name,
+                raw_identity={"cluster_id": cluster_id, "cluster_name": cluster_name},
+            ),
+            "cloud_state": build_cloud_state(
+                provider="databricks",
+                service="clusters",
+                resource_type="cluster",
+                lifecycle_state=lifecycle_state,
+                raw_state=state_str,
+                state_source="cluster.state",
+            ),
+        },
+    )
+
+
+def _discover_serving_agents(
+    ws: Any,
+    resolved_host: str,
+    warnings: list[str],
+    permission_denied: Any,
+) -> list[Agent]:
+    """Build one agent per in-scope model serving endpoint."""
+    agents: list[Agent] = []
+    # ── Model Serving Endpoints ───────────────────────────────────────────
+    try:
+        endpoints = list(ws.serving_endpoints.list())
+        for ep in endpoints:
+            agent = _serving_endpoint_agent(ep, resolved_host)
+            if agent is not None:
+                agents.append(agent)
+
+    except permission_denied:
+        warnings.append("Access denied for Databricks model serving API.")
+    except Exception as exc:
+        warnings.append(f"Could not list Databricks serving endpoints: {exc}")
+    return agents
+
+
+def _serving_endpoint_agent(ep: Any, resolved_host: str) -> Agent | None:
+    """Build the agent for a single serving endpoint, or ``None`` when it is skipped."""
+    ep_name = getattr(ep, "name", "unknown")
+    ep_state = getattr(ep, "state", None)
+    # ep_state.ready is an EndpointStateReady enum — use .value to get
+    # the raw string ("READY" / "NOT_READY") rather than the repr.
+    ready_enum = getattr(ep_state, "ready", None) if ep_state else None
+    state_str = getattr(ready_enum, "value", str(ready_enum or "")).upper()
+    lifecycle_state = normalize_cloud_lifecycle_state(
+        provider="databricks",
+        service="model-serving",
+        resource_type="serving-endpoint",
+        raw_state=state_str,
+    )
+    if lifecycle_state is None:
+        return None
+
+    server = MCPServer(
+        name=f"serving:{ep_name}",
+        command="model-serving",
+        transport=TransportType.STREAMABLE_HTTP,
+    )
+    return Agent(
+        name=f"databricks-serving:{ep_name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"{resolved_host}/ml/endpoints/{ep_name}",
+        source="databricks",
+        mcp_servers=[server],
+        metadata={
+            "cloud_origin": build_cloud_origin(
+                provider="databricks",
+                service="model-serving",
+                resource_type="serving-endpoint",
+                resource_id=ep_name,
+                resource_name=ep_name,
+                raw_identity={"name": ep_name},
+            ),
+            "cloud_state": build_cloud_state(
+                provider="databricks",
+                service="model-serving",
+                resource_type="serving-endpoint",
+                lifecycle_state=lifecycle_state,
+                raw_state=state_str,
+                state_source="state.ready",
+            ),
+        },
+    )
 
 
 def _get_cluster_packages(

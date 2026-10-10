@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Opt-in scan finding snapshots persist completed job evidence in tenant-scoped memory, SQLite or PostgreSQL stores. Backfill and purge commands manage retained jobs; deletion and expiry remove snapshots even after writes are disabled. Snapshot-backed findings reads remain a separate phase.
+
 - Direct compromise assessment is available through the authenticated graph API, `graph-paths compromise`, the graph-profile MCP tool, and the graph entity drawer. Requests require explicit assumptions and return a pinned snapshot revision with action-scoped historical permission receipts, denials, and unknowns. Partial storage reads fail closed; this does not establish current access, successful execution, or multi-hop compromise.
 
 - Storage backends now carry a declared support tier: PostgreSQL (server system of record) and SQLite (local, CLI and pilot) are supported, ClickHouse is an analytics sink only, and the Snowflake control-plane stores and the Neptune graph backend are experimental. When an experimental backend is selected, the API logs one warning at startup that names the backend, its tier and `docs/STORAGE_BACKENDS.md`. In a deployment that looks multi-tenant, the warning states that tenant isolation for that backend is not proven. Startup continues by default. `AGENT_BOM_REQUIRE_SUPPORTED_STORAGE=1` refuses to start with an experimental backend. `agent-bom doctor` lists the tier of each selected store under Platform integrations; experimental rows count as warnings.
@@ -20,6 +22,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - A Python direct compromise assessment contract classifies scoped authorization receipts from a selected graph node or an explicitly assumed affected component. It preserves action-specific denials, uncertainty, original edge direction and collection timestamps. This read-only foundation does not establish current access, successful exploitation or multi-hop reachability.
 
 ### Changed
+
+- Cloud discovery for AWS (AI services, organizations, inventory), Azure, GCP (inventory and authorization), Snowflake, Databricks, CoreWeave, Nebius, Lambda Labs, RunPod, local GPU infrastructure and the NVIDIA advisory check is split into named stages. Each stage keeps its own error isolation and warning text, so discovery output, warnings and API calls are unchanged. Kubernetes GPU parsing shared by CoreWeave and Nebius moves to `cloud/k8s_gpu_common.py`; GCP authorization record normalizers move to `cloud/gcp_authorization_records.py`; Snowflake notebook discovery moves to `cloud/snowflake_notebooks.py`. 35 architecture debt entries are retired.
 
 - Managed-node EKS bootstrap no longer requests an unused Auto Mode policy or a standalone cluster-encryption policy. Encryption permissions remain scoped to the cluster's KMS key through an inline role policy; the cluster-first bootstrap command includes that policy.
 

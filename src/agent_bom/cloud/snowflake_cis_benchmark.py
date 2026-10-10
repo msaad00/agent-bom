@@ -149,6 +149,17 @@ def _live_password_policies(cursor: Any) -> list[dict[str, Any]]:
     return live
 
 
+def _password_policy_rows(cursor: Any, result: CISCheckResult, key: str) -> list[dict[str, Any]]:
+    """Live password policies for a 1.x check: FAIL *result* when none exist; reject rows missing *key*."""
+    rows = _live_password_policies(cursor)
+    if not rows:
+        result.status = CheckStatus.FAIL
+        result.evidence = "No password policies configured."
+    elif any(row.get(key) is None for row in rows):
+        raise ValueError(f"Snowflake password-policy description omitted {key.upper()}")
+    return rows
+
+
 # ACCOUNT_USAGE has no universal ingestion watermark. Snapshot-style sources
 # are usable only when their scoped row count reconciles with a live SHOW
 # command. Temporal sources use an explicit upper cutoff at the documented lag
@@ -387,14 +398,9 @@ def _check_1_2(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_MIN_LENGTH = 14;",
     )
-    rows = _live_password_policies(cursor)
+    rows = _password_policy_rows(cursor, result, "password_min_length")
     if not rows:
-        result.status = CheckStatus.FAIL
-        result.evidence = "No password policies configured."
         return result
-
-    if any(row.get("password_min_length") is None for row in rows):
-        raise ValueError("Snowflake password-policy description omitted PASSWORD_MIN_LENGTH")
 
     weak = [r for r in rows if int(r.get("password_min_length") or 0) < 14]
     if weak:
@@ -463,14 +469,9 @@ def _check_1_5(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_HISTORY = 24;",
     )
-    rows = _live_password_policies(cursor)
+    rows = _password_policy_rows(cursor, result, "password_history")
     if not rows:
-        result.status = CheckStatus.FAIL
-        result.evidence = "No password policies configured."
         return result
-
-    if any(row.get("password_history") is None for row in rows):
-        raise ValueError("Snowflake password-policy description omitted PASSWORD_HISTORY")
 
     weak = [r for r in rows if int(r.get("password_history", 0) or 0) < 24]
     if weak:
@@ -492,14 +493,9 @@ def _check_1_6(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_MAX_AGE_DAYS = 90;",
     )
-    rows = _live_password_policies(cursor)
+    rows = _password_policy_rows(cursor, result, "password_max_age_days")
     if not rows:
-        result.status = CheckStatus.FAIL
-        result.evidence = "No password policies configured."
         return result
-
-    if any(row.get("password_max_age_days") is None for row in rows):
-        raise ValueError("Snowflake password-policy description omitted PASSWORD_MAX_AGE_DAYS")
 
     weak = [r for r in rows if int(r.get("password_max_age_days", 0) or 0) == 0 or int(r.get("password_max_age_days", 0) or 0) > 90]
     if weak:
@@ -829,7 +825,24 @@ def run_benchmark(
             raise CloudDiscoveryError(f"Could not connect to Snowflake: {exc}")
 
     report = SnowflakeCISReport(account=resolved_account)
+    try:
+        _run_checks(conn.cursor(), report, checks)
+    finally:
+        # Only close a connection we opened; an injected (brokered) one is the
+        # caller's to close.
+        if owns_conn:
+            conn.close()
 
+    # Structured remediation per #665.
+    from agent_bom.cloud.cis_remediation import attach_all
+
+    attach_all(report, cloud="snowflake")
+
+    return report
+
+
+def _run_checks(cursor: Any, report: SnowflakeCISReport, checks: list[str] | None) -> None:
+    """Preflight the selected ACCOUNT_USAGE sources, then run each selected check into *report*."""
     all_checks: list[tuple[str, Callable[..., CISCheckResult]]] = [
         ("1.1", _check_1_1),
         ("1.2", _check_1_2),
@@ -846,45 +859,32 @@ def run_benchmark(
         ("5.1", _check_5_1),
         ("5.2", _check_5_2),
     ]
+    selected_ids = {check_id for check_id, _check_fn in all_checks if not checks or check_id in checks}
+    selected_sources = {_CHECK_SOURCES[check_id] for check_id in selected_ids if check_id in _CHECK_SOURCES}
+    report.source_health = {source: _preflight_account_usage_source(cursor, source) for source in sorted(selected_sources)}
+    for check_id, check_fn in all_checks:
+        if checks and check_id not in checks:
+            continue
+        source = _CHECK_SOURCES.get(check_id)
+        if source is not None and not report.source_health[source]["usable"]:
+            report.checks.append(_source_error_result(check_id, source, report.source_health[source]))
+            continue
+        report.checks.append(_run_check(cursor, check_id, check_fn))
 
+
+def _run_check(cursor: Any, check_id: str, check_fn: Callable[..., CISCheckResult]) -> CISCheckResult:
+    """Run one check, converting an unexpected query failure into an ERROR result."""
     try:
-        cursor = conn.cursor()
-        selected_ids = {check_id for check_id, _check_fn in all_checks if not checks or check_id in checks}
-        selected_sources = {_CHECK_SOURCES[check_id] for check_id in selected_ids if check_id in _CHECK_SOURCES}
-        report.source_health = {source: _preflight_account_usage_source(cursor, source) for source in sorted(selected_sources)}
-        for check_id, check_fn in all_checks:
-            if checks and check_id not in checks:
-                continue
-            source = _CHECK_SOURCES.get(check_id)
-            if source is not None and not report.source_health[source]["usable"]:
-                report.checks.append(_source_error_result(check_id, source, report.source_health[source]))
-                continue
-            try:
-                check_result = check_fn(cursor)
-                report.checks.append(check_result)
-            except Exception as exc:
-                logger.warning("CIS Snowflake check %s failed: %s", check_id, sanitize_text(exc))
-                # Own-worded catalog title only — never docstring-derived text,
-                # which would reproduce the copyrighted CIS house-style title.
-                error_metadata = _CHECK_ERROR_METADATA.get(check_id)
-                report.checks.append(
-                    CISCheckResult(
-                        check_id=check_id,
-                        title=error_metadata[0] if error_metadata else f"Check {check_id} could not be evaluated",
-                        status=CheckStatus.ERROR,
-                        severity="unknown",
-                        evidence=f"Query error: {exc}",
-                    )
-                )
-    finally:
-        # Only close a connection we opened; an injected (brokered) one is the
-        # caller's to close.
-        if owns_conn:
-            conn.close()
-
-    # Structured remediation per #665.
-    from agent_bom.cloud.cis_remediation import attach_all
-
-    attach_all(report, cloud="snowflake")
-
-    return report
+        return check_fn(cursor)
+    except Exception as exc:
+        logger.warning("CIS Snowflake check %s failed: %s", check_id, sanitize_text(exc))
+        # Own-worded catalog title only — never docstring-derived text,
+        # which would reproduce the copyrighted CIS house-style title.
+        error_metadata = _CHECK_ERROR_METADATA.get(check_id)
+        return CISCheckResult(
+            check_id=check_id,
+            title=error_metadata[0] if error_metadata else f"Check {check_id} could not be evaluated",
+            status=CheckStatus.ERROR,
+            severity="unknown",
+            evidence=f"Query error: {exc}",
+        )

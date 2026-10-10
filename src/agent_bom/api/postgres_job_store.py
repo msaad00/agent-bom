@@ -18,6 +18,7 @@ from agent_bom.api.postgres_common import (
     reset_current_tenant,
     set_current_tenant,
 )
+from agent_bom.api.scan_snapshot_store import discard_job_snapshot
 from agent_bom.api.storage.job_payload_cache import JobPayloadCache, read_versioned_jobs
 from agent_bom.api.storage.job_read_projections import postgres_demo_exists, postgres_pending_dispatch_count
 from agent_bom.api.storage.job_revisions import POSTGRES_JOB_REVISIONS_V1, read_postgres_job_revision
@@ -311,7 +312,8 @@ class PostgresJobStore:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.delete()")
         with self._scope_connection(all_tenants=all_tenants) as conn:
             if tenant_id is None:
-                cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
+                cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s RETURNING team_id", (job_id,))
+                deleted_tenants = [row[0] for row in cursor.fetchall()]
             else:
                 cursor = conn.execute(
                     "DELETE FROM scan_jobs WHERE job_id = %s AND team_id = %s",
@@ -321,7 +323,9 @@ class PostgresJobStore:
             if tenant_id is not None:
                 job_status_count_cache.invalidate_tenant(tenant_id)
                 self._payloads.forget(tenant_id, job_id)
-            return int(cursor.rowcount) > 0
+        for owner in deleted_tenants if tenant_id is None else []:
+            discard_job_snapshot(owner, job_id, deleted=True)
+        return discard_job_snapshot(tenant_id, job_id, deleted=int(cursor.rowcount) > 0)
 
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_all()")

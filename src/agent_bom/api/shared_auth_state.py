@@ -488,7 +488,7 @@ def set_auth_state_for_tests(backend: AuthStateBackend) -> None:
 def auth_state_posture() -> dict[str, Any]:
     """Operator-facing posture for the active backend (for /v1/auth/policy)."""
     backend = get_auth_state()
-    from agent_bom.api.middleware import clustered_control_plane_required
+    from agent_bom.api.storage.deployment import clustered_control_plane_required
 
     available = backend.is_available() if isinstance(backend, PostgresAuthState) else True
     clustered_ok = isinstance(backend, PostgresAuthState) and available

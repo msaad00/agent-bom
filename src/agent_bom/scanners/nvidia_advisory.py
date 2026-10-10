@@ -308,6 +308,59 @@ def extract_vulns_from_csaf(csaf: dict) -> list[Vulnerability]:
     return vulns
 
 
+def _index_nvidia_products(packages: list[Package]) -> tuple[set[str], dict[str, list[Package]]]:
+    """Map each relevant NVIDIA product name to the scanned packages it covers."""
+    product_names: set[str] = set()
+    pkg_by_product: dict[str, list[Package]] = {}
+    for pkg in packages:
+        products = get_nvidia_products_for_package(pkg.name)
+        for product in products:
+            product_names.add(product)
+            pkg_by_product.setdefault(product, []).append(pkg)
+    return product_names, pkg_by_product
+
+
+def _add_new_vulns(pkg: Package, csaf_vulns: list[Vulnerability]) -> int:
+    """Attach advisory vulns not already on ``pkg`` (by ID or alias); return the count added."""
+    added = 0
+    existing_ids = {v.id for v in pkg.vulnerabilities}
+    for v in pkg.vulnerabilities:
+        existing_ids.update(v.aliases)
+    for vuln in csaf_vulns:
+        if vuln.id in existing_ids:
+            continue
+        # Skip if the installed version is already at or beyond
+        # the fix — same guard as ghsa_advisory.py.
+        if vuln.fixed_version and pkg.version:
+            from agent_bom.version_utils import compare_versions
+
+            if not compare_versions(pkg.version, vuln.fixed_version, pkg.ecosystem):
+                continue
+        pkg.vulnerabilities.append(vuln)
+        existing_ids.add(vuln.id)
+        added += 1
+    return added
+
+
+def _apply_csaf_to_packages(
+    csaf: dict,
+    csaf_vulns: list[Vulnerability],
+    product_names: set[str],
+    pkg_by_product: dict[str, list[Package]],
+) -> int:
+    """Assign one advisory's vulns to matching packages (deduplicate by CVE ID)."""
+    added = 0
+    for product, pkgs in pkg_by_product.items():
+        if product not in product_names:
+            continue
+        # Check if this advisory affects this product
+        if not _csaf_affects_product(csaf, {product}):
+            continue
+        for pkg in pkgs:
+            added += _add_new_vulns(pkg, csaf_vulns)
+    return added
+
+
 async def check_nvidia_advisories(
     packages: list[Package],
     max_advisories: int = 20,
@@ -321,13 +374,7 @@ async def check_nvidia_advisories(
     Returns count of new vulnerabilities found.
     """
     # Determine which NVIDIA products are relevant
-    product_names: set[str] = set()
-    pkg_by_product: dict[str, list[Package]] = {}
-    for pkg in packages:
-        products = get_nvidia_products_for_package(pkg.name)
-        for product in products:
-            product_names.add(product)
-            pkg_by_product.setdefault(product, []).append(pkg)
+    product_names, pkg_by_product = _index_nvidia_products(packages)
 
     if not product_names:
         return 0
@@ -363,30 +410,7 @@ async def check_nvidia_advisories(
             if not csaf_vulns:
                 continue
 
-            # Assign vulnerabilities to matching packages (deduplicate by CVE ID)
-            for product, pkgs in pkg_by_product.items():
-                if product not in product_names:
-                    continue
-                # Check if this advisory affects this product
-                if not _csaf_affects_product(csaf, {product}):
-                    continue
-                for pkg in pkgs:
-                    existing_ids = {v.id for v in pkg.vulnerabilities}
-                    for v in pkg.vulnerabilities:
-                        existing_ids.update(v.aliases)
-                    for vuln in csaf_vulns:
-                        if vuln.id in existing_ids:
-                            continue
-                        # Skip if the installed version is already at or beyond
-                        # the fix — same guard as ghsa_advisory.py.
-                        if vuln.fixed_version and pkg.version:
-                            from agent_bom.version_utils import compare_versions
-
-                            if not compare_versions(pkg.version, vuln.fixed_version, pkg.ecosystem):
-                                continue
-                        pkg.vulnerabilities.append(vuln)
-                        existing_ids.add(vuln.id)
-                        total_new += 1
+            total_new += _apply_csaf_to_packages(csaf, csaf_vulns, product_names, pkg_by_product)
 
     if total_new:
         logger.info("NVIDIA advisories: found %d new CVE(s)", total_new)

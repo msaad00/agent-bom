@@ -18,6 +18,7 @@ import zipfile
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from email.parser import Parser as EmailParser
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,31 @@ _MAX_AWS_DISCOVERY_WORKERS = 4
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+_AwsJobResult = tuple[list[Agent], list[str], list[dict[str, str] | str]]
+_AwsDiscoveryJob = Callable[[], _AwsJobResult]
+_AwsCollector = Callable[..., tuple[list[Agent], list[str]]]
+_SessionFactory = Callable[[], Any]
+
+_AWS_ACCESS_DENIED_WARNINGS = {
+    "bedrock": "Access denied for bedrock-agent:ListAgents. Attach the BedrockAgentReadOnly or AmazonBedrockReadOnly policy.",
+    "ecs": "Access denied for ECS APIs. Attach AmazonECSReadOnlyAccess policy.",
+    "sagemaker": "Access denied for SageMaker APIs. Attach AmazonSageMakerReadOnly policy.",
+    "lambda": "Access denied for Lambda APIs. Attach AWSLambda_ReadOnlyAccess policy.",
+    "eks": "Access denied for EKS APIs. Attach AmazonEKSReadOnlyAccess policy.",
+    "step-functions": "Access denied for Step Functions APIs. Attach AWSStepFunctionsReadOnlyAccess policy.",
+    "ec2": "Access denied for EC2 APIs. Attach AmazonEC2ReadOnlyAccess policy.",
+}
+_AWS_API_ERROR_LABELS = {
+    "bedrock": "AWS Bedrock API error",
+    "ecs": "AWS ECS API error",
+    "sagemaker": "AWS SageMaker API error",
+    "lambda": "AWS Lambda API error",
+    "eks": "AWS EKS API error",
+    "step-functions": "AWS Step Functions API error",
+    "ec2": "AWS EC2 API error",
+}
 
 
 def discover(
@@ -87,160 +113,137 @@ def discover(
     resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     account_id = _resolve_account_id(session)
 
-    discovery_jobs: list[tuple[str, Callable[[], tuple[list[Agent], list[str], list[dict[str, str] | str]]]]] = []
-
     def _new_discovery_session() -> Any:
         return boto3.Session(**session_kwargs)
 
-    # ── Bedrock Agents ────────────────────────────────────────────────────
-    def _bedrock_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-        bedrock_agents, bedrock_warnings = _discover_bedrock(
-            _new_discovery_session(),
-            resolved_region,
-            account_id=account_id,
-        )
-        return bedrock_agents, bedrock_warnings, []
-
-    discovery_jobs.append(("bedrock", _bedrock_job))
-
-    # ── ECS Tasks ─────────────────────────────────────────────────────────
-    if include_ecs:
-
-        def _ecs_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-            ecs_refs, ecs_warns = _discover_ecs_images(_new_discovery_session(), resolved_region)
-            return [], ecs_warns, list(ecs_refs)
-
-        discovery_jobs.append(("ecs", _ecs_job))
-
-    # ── SageMaker Endpoints ───────────────────────────────────────────────
-    if include_sagemaker:
-
-        def _sagemaker_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-            sm_agents, sm_warns = _discover_sagemaker(
-                _new_discovery_session(),
-                resolved_region,
-                account_id=account_id,
-            )
-            return sm_agents, sm_warns, []
-
-        discovery_jobs.append(("sagemaker", _sagemaker_job))
-
-    # ── Lambda Functions (direct discovery) ────────────────────────────────
-    if include_lambda:
-
-        def _lambda_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-            lambda_parent_warnings: list[str] = []
-            lambda_agents, lambda_warns = _discover_lambda_functions(
-                _new_discovery_session(),
-                resolved_region,
-                lambda_parent_warnings,
-                account_id=account_id,
-            )
-            return lambda_agents, [*lambda_parent_warnings, *lambda_warns], []
-
-        discovery_jobs.append(("lambda", _lambda_job))
-
-    # ── EKS Clusters ───────────────────────────────────────────────────────
-    if include_eks:
-
-        def _eks_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-            eks_agents, eks_warns = _discover_eks_images(
-                _new_discovery_session(),
-                resolved_region,
-                account_id=account_id,
-            )
-            return eks_agents, eks_warns, []
-
-        discovery_jobs.append(("eks", _eks_job))
-
-    # ── Step Functions ─────────────────────────────────────────────────────
-    if include_step_functions:
-
-        def _sfn_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-            sfn_parent_warnings: list[str] = []
-            sfn_agents, sfn_warns = _discover_step_functions(
-                _new_discovery_session(),
-                resolved_region,
-                sfn_parent_warnings,
-                account_id=account_id,
-            )
-            return sfn_agents, [*sfn_parent_warnings, *sfn_warns], []
-
-        discovery_jobs.append(("step-functions", _sfn_job))
-
-    # ── EC2 Instances (tag-filtered) ───────────────────────────────────────
-    if include_ec2:
-
-        def _ec2_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
-            ec2_agents, ec2_warns = _discover_ec2_instances(
-                _new_discovery_session(),
-                resolved_region,
-                ec2_tag_filter or {},
-                account_id=account_id,
-            )
-            return ec2_agents, ec2_warns, []
-
-        discovery_jobs.append(("ec2", _ec2_job))
-
-    access_denied_warnings = {
-        "bedrock": "Access denied for bedrock-agent:ListAgents. Attach the BedrockAgentReadOnly or AmazonBedrockReadOnly policy.",
-        "ecs": "Access denied for ECS APIs. Attach AmazonECSReadOnlyAccess policy.",
-        "sagemaker": "Access denied for SageMaker APIs. Attach AmazonSageMakerReadOnly policy.",
-        "lambda": "Access denied for Lambda APIs. Attach AWSLambda_ReadOnlyAccess policy.",
-        "eks": "Access denied for EKS APIs. Attach AmazonEKSReadOnlyAccess policy.",
-        "step-functions": "Access denied for Step Functions APIs. Attach AWSStepFunctionsReadOnlyAccess policy.",
-        "ec2": "Access denied for EC2 APIs. Attach AmazonEC2ReadOnlyAccess policy.",
+    flags = {
+        "include_ecs": include_ecs,
+        "include_sagemaker": include_sagemaker,
+        "include_lambda": include_lambda,
+        "include_eks": include_eks,
+        "include_step_functions": include_step_functions,
+        "include_ec2": include_ec2,
     }
-    api_error_labels = {
-        "bedrock": "AWS Bedrock API error",
-        "ecs": "AWS ECS API error",
-        "sagemaker": "AWS SageMaker API error",
-        "lambda": "AWS Lambda API error",
-        "eks": "AWS EKS API error",
-        "step-functions": "AWS Step Functions API error",
-        "ec2": "AWS EC2 API error",
-    }
-
-    if discovery_jobs:
-        with ThreadPoolExecutor(max_workers=min(_MAX_AWS_DISCOVERY_WORKERS, len(discovery_jobs))) as executor:
-            futures_by_service = {service: executor.submit(job) for service, job in discovery_jobs}
-
-            for service, _job in discovery_jobs:
-                future = futures_by_service[service]
-                try:
-                    service_agents, service_warnings, service_ecs_refs = future.result()
-                except NoCredentialsError:
-                    if service == "bedrock":
-                        warnings.append("AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO.")
-                        return agents, warnings
-                    raise
-                except ClientError as exc:
-                    code = exc.response["Error"]["Code"]
-                    if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                        warnings.append(access_denied_warnings[service])
-                    else:
-                        warnings.append(f"{api_error_labels[service]}: {exc}")
-                    continue
-
-                agents.extend(service_agents)
-                warnings.extend(service_warnings)
-                ecs_image_refs.extend(service_ecs_refs)
+    discovery_jobs = _build_aws_discovery_jobs(_new_discovery_session, resolved_region, account_id, ec2_tag_filter=ec2_tag_filter, **flags)
+    if not _collect_aws_discovery_jobs(
+        discovery_jobs, agents, warnings, ecs_image_refs, client_error=ClientError, no_credentials_error=NoCredentialsError
+    ):
+        return agents, warnings
 
     if include_iam:
         _enrich_agents_with_iam(_new_discovery_session(), agents, account_id=account_id, warnings=warnings)
 
-    # ── ECS images as agents ──────────────────────────────────────────────
+    agents.extend(_ecs_image_agents(ecs_image_refs, region=resolved_region, account_id=account_id))
+
+    permissions_used = _aws_permissions_for_jobs(include_iam=include_iam, **flags)
+    _attach_aws_discovery_envelope(
+        agents, account_id=account_id, region=resolved_region, tag_filter=tag_filter, permissions_used=permissions_used
+    )
+    return agents, warnings
+
+
+def _agents_job(discover_fn: _AwsCollector, new_session: _SessionFactory, region: str, *args: Any, account_id: str | None) -> _AwsJobResult:
+    """Run a ``(session, region, *args, account_id=...)`` service collector."""
+    service_agents, service_warnings = discover_fn(new_session(), region, *args, account_id=account_id)
+    return service_agents, service_warnings, []
+
+
+def _parent_warnings_job(discover_fn: _AwsCollector, new_session: _SessionFactory, region: str, *, account_id: str | None) -> _AwsJobResult:
+    """Run a collector that also reports into a parent warning list (Lambda, Step Functions)."""
+    parent_warnings: list[str] = []
+    service_agents, service_warnings = discover_fn(new_session(), region, parent_warnings, account_id=account_id)
+    return service_agents, [*parent_warnings, *service_warnings], []
+
+
+def _ecs_job(new_session: _SessionFactory, region: str) -> _AwsJobResult:
+    ecs_refs, ecs_warns = _discover_ecs_images(new_session(), region)
+    return [], ecs_warns, list(ecs_refs)
+
+
+def _build_aws_discovery_jobs(
+    new_session: _SessionFactory,
+    region: str,
+    account_id: str | None,
+    *,
+    include_ecs: bool,
+    include_sagemaker: bool,
+    include_lambda: bool,
+    include_eks: bool,
+    include_step_functions: bool,
+    include_ec2: bool,
+    ec2_tag_filter: dict[str, str] | None,
+) -> list[tuple[str, _AwsDiscoveryJob]]:
+    """Return the ordered (service, job) list for every enabled AWS collector."""
+    jobs: list[tuple[str, _AwsDiscoveryJob]] = [
+        ("bedrock", partial(_agents_job, _discover_bedrock, new_session, region, account_id=account_id))
+    ]
+    if include_ecs:
+        jobs.append(("ecs", partial(_ecs_job, new_session, region)))
+    if include_sagemaker:
+        jobs.append(("sagemaker", partial(_agents_job, _discover_sagemaker, new_session, region, account_id=account_id)))
+    if include_lambda:
+        jobs.append(("lambda", partial(_parent_warnings_job, _discover_lambda_functions, new_session, region, account_id=account_id)))
+    if include_eks:
+        jobs.append(("eks", partial(_agents_job, _discover_eks_images, new_session, region, account_id=account_id)))
+    if include_step_functions:
+        jobs.append(("step-functions", partial(_parent_warnings_job, _discover_step_functions, new_session, region, account_id=account_id)))
+    if include_ec2:
+        ec2_job = partial(_agents_job, _discover_ec2_instances, new_session, region, ec2_tag_filter or {}, account_id=account_id)
+        jobs.append(("ec2", ec2_job))
+    return jobs
+
+
+def _collect_aws_discovery_jobs(
+    discovery_jobs: list[tuple[str, _AwsDiscoveryJob]],
+    agents: list[Agent],
+    warnings: list[str],
+    ecs_image_refs: list[dict[str, str] | str],
+    *,
+    client_error: Any,
+    no_credentials_error: Any,
+) -> bool:
+    """Run every job concurrently and merge results in job order.
+
+    Returns ``False`` when Bedrock reports missing credentials, in which case
+    the caller must stop and return what it has.
+    """
+    if not discovery_jobs:
+        return True
+    with ThreadPoolExecutor(max_workers=min(_MAX_AWS_DISCOVERY_WORKERS, len(discovery_jobs))) as executor:
+        futures_by_service = {service: executor.submit(job) for service, job in discovery_jobs}
+
+        for service, _job in discovery_jobs:
+            future = futures_by_service[service]
+            try:
+                service_agents, service_warnings, service_ecs_refs = future.result()
+            except no_credentials_error:
+                if service == "bedrock":
+                    warnings.append("AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO.")
+                    return False
+                raise
+            except client_error as exc:
+                code = exc.response["Error"]["Code"]
+                if code in ("AccessDeniedException", "UnauthorizedAccess"):
+                    warnings.append(_AWS_ACCESS_DENIED_WARNINGS[service])
+                else:
+                    warnings.append(f"{_AWS_API_ERROR_LABELS[service]}: {exc}")
+                continue
+
+            agents.extend(service_agents)
+            warnings.extend(service_warnings)
+            ecs_image_refs.extend(service_ecs_refs)
+    return True
+
+
+def _ecs_image_agents(ecs_image_refs: list[dict[str, str] | str], *, region: str, account_id: str | None) -> list[Agent]:
+    """Turn collected ECS container image references into image agents."""
+    ecs_agents: list[Agent] = []
     for ecs_ref in ecs_image_refs:
-        if isinstance(ecs_ref, dict):
-            img_ref = ecs_ref.get("image", "")
-            cluster_arn = ecs_ref.get("cluster_arn", "")
-            task_arn = ecs_ref.get("task_arn", "")
-            container_name = ecs_ref.get("container_name", img_ref)
-        else:
-            img_ref = ecs_ref
-            cluster_arn = ""
-            task_arn = ""
-            container_name = img_ref
+        ref = ecs_ref if isinstance(ecs_ref, dict) else {"image": ecs_ref}
+        img_ref = ref.get("image", "")
+        cluster_arn = ref.get("cluster_arn", "")
+        task_arn = ref.get("task_arn", "")
+        container_name = ref.get("container_name", img_ref)
         if not img_ref:
             continue
         ecs_agent = Agent(
@@ -273,7 +276,7 @@ def discover(
                     resource_type="container-image",
                     resource_id=f"{task_arn}/{container_name}" if task_arn else img_ref,
                     resource_name=container_name or img_ref.split("/")[-1],
-                    location=resolved_region,
+                    location=region,
                     account_id=account_id,
                     raw_identity={
                         "cluster_arn": cluster_arn,
@@ -284,43 +287,38 @@ def discover(
                 )
             },
         )
-        agents.append(ecs_agent)
+        ecs_agents.append(ecs_agent)
+    return ecs_agents
 
-    # ── Per-run discovery envelope (#2083) ────────────────────────────────
-    # Capture the trust contract for THIS run: the modes / scope / IAM
-    # permissions actually exercised, plus the redaction posture. The
-    # central sanitizer in `agent_bom.security` is what ultimately scrubs
-    # values before storage, so we report `central_sanitizer_applied`.
+
+def _attach_aws_discovery_envelope(
+    agents: list[Agent],
+    *,
+    account_id: str | None,
+    region: str,
+    tag_filter: dict[str, str] | None,
+    permissions_used: tuple[str, ...],
+) -> None:
+    """Stamp the per-run discovery envelope (#2083): the modes / scope / IAM permissions
+    actually exercised, plus the redaction posture. The central sanitizer in
+    `agent_bom.security` scrubs values before storage (`central_sanitizer_applied`)."""
     discovery_scope: list[str] = []
     if account_id:
         discovery_scope.append(f"aws:account/{account_id}")
-    if resolved_region:
-        discovery_scope.append(f"aws:region/{resolved_region}")
+    if region:
+        discovery_scope.append(f"aws:region/{region}")
     if tag_filter:
-        for k, v in sorted(tag_filter.items()):
-            discovery_scope.append(f"aws:tag/{k}={v}")
+        discovery_scope.extend(f"aws:tag/{k}={v}" for k, v in sorted(tag_filter.items()))
 
-    permissions_used = _aws_permissions_for_jobs(
-        include_ecs=include_ecs,
-        include_sagemaker=include_sagemaker,
-        include_lambda=include_lambda,
-        include_eks=include_eks,
-        include_step_functions=include_step_functions,
-        include_ec2=include_ec2,
-        include_iam=include_iam,
-    )
-    envelope = DiscoveryEnvelope(
+    envelope_payload = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
         discovery_scope=tuple(discovery_scope),
         permissions_used=permissions_used,
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
-    )
-    envelope_payload = envelope.to_dict()
+    ).to_dict()
     for agent in agents:
         if agent.discovery_envelope is None:
             agent.discovery_envelope = envelope_payload
-
-    return agents, warnings
 
 
 # IAM permissions exercised by AWS provider helpers, by job. Each entry is

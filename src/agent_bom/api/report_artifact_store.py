@@ -124,7 +124,7 @@ def presign_report_artifact(uri: str) -> str:
 def validate_report_artifact_sharing() -> None:
     """Reject clustered local exports unless every replica shares artifact storage."""
     from agent_bom.api.durable_store import select_backend
-    from agent_bom.api.middleware import clustered_control_plane_required
+    from agent_bom.api.storage.deployment import clustered_control_plane_required
 
     if not clustered_control_plane_required():
         return

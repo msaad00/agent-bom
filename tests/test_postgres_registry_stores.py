@@ -223,6 +223,7 @@ def test_additional_registry_replica_isolation(kind):
             "PostgresExportScheduleStore",
         ),
         ("runtime_event_store", "get_runtime_event_store", "_RUNTIME_EVENT_STORE", "postgres_runtime_event", "PostgresRuntimeEventStore"),
+        ("scan_snapshot_store", "get_scan_snapshot_store", "_default_store", "postgres_scan_snapshot", "PostgresScanSnapshotStore"),
     ],
 )
 @pytest.mark.parametrize("variable", ["AGENT_BOM_DB", "AGENT_BOM_POSTGRES_URL"])

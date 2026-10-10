@@ -104,6 +104,8 @@ def test_import_dry_run_reports_existing_secondary_identity_conflict(tmp_path):
         "tenant_score_config_overrides",
         "tenant_graph_retention_overrides",
         "tenant_quota_overrides",
+        "scan_snapshot_jobs",
+        "scan_snapshot_rows",
     ],
 )
 def test_unsupported_recovery_is_rejected_before_source_or_target_access(tmp_path, table):

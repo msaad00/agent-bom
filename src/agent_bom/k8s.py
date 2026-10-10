@@ -789,6 +789,236 @@ def _posture_status(collectors: list[K8sCollectorEvidence]) -> K8sPostureStatus:
     return K8sPostureStatus.COMPLETE
 
 
+def _live_finding(rule_id: str, severity: str, title: str, message: str, file_path: str, compliance: list[str]) -> IaCFinding:
+    return IaCFinding(
+        rule_id=rule_id,
+        severity=severity,
+        title=title,
+        message=message,
+        file_path=file_path,
+        line_number=1,
+        category="kubernetes-live",
+        compliance=compliance,
+    )
+
+
+def _transport_unavailable_result(exc: K8sTransportError) -> K8sPostureResult:
+    """Stage 1 failure: no read transport, so every collector is recorded as not run."""
+    collectors = [
+        K8sCollectorEvidence(collector_id=resource, state=CollectorState.FAILED, message=str(exc)) for resource in _POSTURE_RESOURCES
+    ]
+    collectors.append(
+        K8sCollectorEvidence(
+            collector_id="kubelet_configz",
+            state=CollectorState.SKIPPED,
+            message="nodes/configz collection was not started",
+        )
+    )
+    return K8sPostureResult(findings=[], collectors=collectors, status=K8sPostureStatus.FAILED, transport="unavailable")
+
+
+def _collect_posture_resources(
+    transport: K8sReadTransport, transport_name: str, namespace: str, all_namespaces: bool, collectors: list[K8sCollectorEvidence]
+) -> dict[str, dict]:
+    """Stage 2: GET each posture resource kind, recording per-kind collector evidence."""
+    payloads: dict[str, dict] = {}
+    for resource in _POSTURE_RESOURCES:
+        resource_namespace = namespace if resource in {"pods", "networkpolicies", "roles"} else None
+        try:
+            read = transport.list_resource(resource, namespace=resource_namespace, all_namespaces=all_namespaces)
+        except K8sTransportError as exc:
+            collectors.append(
+                K8sCollectorEvidence(
+                    collector_id=resource, state=_collector_state_for_error(exc), message=str(exc), transport=transport_name
+                )
+            )
+            continue
+        payloads[resource] = read.data
+        collectors.append(
+            K8sCollectorEvidence(
+                collector_id=resource,
+                state=CollectorState.EXECUTED,
+                object_count=read.object_count,
+                pages=read.pages,
+                truncated=read.truncated,
+                message="collection reached its configured bound" if read.truncated else "",
+                transport=transport_name,
+            )
+        )
+    return payloads
+
+
+def _live_pod_findings(pod_ns: str, pod_name: str, spec: dict, status: dict) -> list[IaCFinding]:
+    """Stage 3a: runtime health and service-account token checks for one live pod."""
+    findings: list[IaCFinding] = []
+    pod_ref = f"k8s://{pod_ns}/{pod_name}"
+    phase = status.get("phase", "Unknown")
+    if phase != "Running":
+        message = (
+            f"Pod '{pod_ns}/{pod_name}' is currently in phase '{phase}'. "
+            "Investigate runtime drift, crash loops, or image/config rollout health."
+        )
+        findings.append(_live_finding("K8S-LIVE-001", "medium", "Live pod not running", message, pod_ref, ["CIS-K8s-5.7.4", "NIST-SI-4"]))
+
+    container_statuses = status.get("containerStatuses", []) or []
+    for container_status in container_statuses:
+        waiting = (container_status.get("state", {}) or {}).get("waiting", {}) or {}
+        if waiting.get("reason") == "CrashLoopBackOff":
+            message = (
+                f"Pod '{pod_ns}/{pod_name}' container "
+                f"'{container_status.get('name', 'unknown')}' is in CrashLoopBackOff. "
+                "Runtime drift or bad rollout is already impacting availability."
+            )
+            findings.append(
+                _live_finding("K8S-LIVE-002", "high", "Live pod is crash looping", message, pod_ref, ["CIS-K8s-5.7.4", "NIST-SI-4"])
+            )
+        if not container_status.get("ready", False):
+            message = (
+                f"Pod '{pod_ns}/{pod_name}' container "
+                f"'{container_status.get('name', 'unknown')}' is not ready. "
+                "Live readiness drift may bypass assumptions in static manifests."
+            )
+            findings.append(
+                _live_finding("K8S-LIVE-003", "medium", "Live pod container not ready", message, pod_ref, ["CIS-K8s-5.7.4", "NIST-SI-4"])
+            )
+
+    automount = spec.get("automountServiceAccountToken")
+    if automount is not False:
+        explicit = automount is True
+        detail = (
+            "service-account token auto-mount explicitly enabled."
+            if explicit
+            else "service-account token auto-mount left at the Kubernetes default (enabled)."
+        )
+        message = (
+            f"Pod '{pod_ns}/{pod_name}' is running with {detail} "
+            "Set automountServiceAccountToken: false unless the workload needs Kubernetes API access."
+        )
+        severity = "medium" if explicit else "low"
+        findings.append(
+            _live_finding(
+                "K8S-LIVE-004", severity, "Live pod mounts service-account token", message, pod_ref, ["CIS-K8s-5.1.6", "NIST-AC-6"]
+            )
+        )
+    return findings
+
+
+def _evaluate_live_pods(pods: dict, namespace: str, findings: list[IaCFinding]) -> set[str]:
+    """Stage 3b: evaluate every live pod and return the namespaces that run pods."""
+    namespaces_with_pods: set[str] = set()
+    for pod in pods.get("items", []):
+        if not isinstance(pod, dict):
+            continue
+        metadata = pod.get("metadata", {})
+        pod_name = metadata.get("name", "unknown")
+        pod_ns = metadata.get("namespace", namespace)
+        namespaces_with_pods.add(pod_ns)
+        findings.extend(_live_pod_findings(pod_ns, pod_name, pod.get("spec", {}) or {}, pod.get("status", {}) or {}))
+    findings.extend(evaluate_pod_security(pods, default_namespace=namespace))
+    return namespaces_with_pods
+
+
+def _network_policy_gaps(namespaces_with_pods: set[str], policy_namespaces: set[str]) -> list[IaCFinding]:
+    """Stage 3c: namespaces running pods without any live NetworkPolicy object."""
+    findings: list[IaCFinding] = []
+    for ns in sorted(namespaces_with_pods):
+        if ns not in policy_namespaces:
+            message = (
+                f"Namespace '{ns}' has running pods but no live NetworkPolicy objects. "
+                "This is a runtime posture gap even if manifests exist elsewhere in Git."
+            )
+            title = "Namespace lacks live NetworkPolicy coverage"
+            findings.append(_live_finding("K8S-LIVE-005", "high", title, message, f"k8s://namespace/{ns}", ["CIS-K8s-5.3.2", "NIST-SC-7"]))
+    return findings
+
+
+def _read_node_configz(transport: K8sReadTransport, node: dict, remaining_seconds: float) -> dict:
+    """GET one node's kubelet ``/configz``; raises K8sTransportError when not evaluable."""
+    endpoint = _kubelet_endpoint(node)
+    if endpoint is None:
+        raise K8sTransportError("Node does not advertise an evaluable kubelet HTTPS endpoint", status_code=404, reason="unavailable")
+    kubelet_host, kubelet_port = endpoint
+    data = transport.get_kubelet_json(
+        kubelet_host,
+        kubelet_port,
+        "/configz",
+        timeout=max(1, min(MAX_CONFIGZ_REQUEST_SECONDS, ceil(remaining_seconds))),
+    )
+    config = data.get("kubeletconfig", data)
+    if not isinstance(config, dict) or not config:
+        raise K8sTransportError("nodes/configz returned no evaluable configuration", reason="invalid_json")
+    return config
+
+
+def _configz_evidence(
+    config_errors: list[K8sTransportError], config_truncated: bool, config_count: int, transport_name: str
+) -> K8sCollectorEvidence:
+    if config_errors:
+        config_state = (
+            CollectorState.FAILED
+            if any(_collector_state_for_error(error) is CollectorState.FAILED for error in config_errors)
+            else CollectorState.UNEVALUABLE
+        )
+        message = f"{len(config_errors)} node config read(s) were not evaluable"
+    elif config_truncated and config_count == 0:
+        config_state = CollectorState.UNEVALUABLE
+        message = "nodes/configz collection reached its configured bound before any node was evaluated"
+    else:
+        config_state = CollectorState.EXECUTED
+        message = "nodes/configz collection reached its configured bound" if config_truncated else ""
+    return K8sCollectorEvidence(
+        collector_id="kubelet_configz",
+        state=config_state,
+        object_count=config_count,
+        pages=config_count,
+        truncated=config_truncated,
+        message=message,
+        transport=transport_name,
+    )
+
+
+def _collect_kubelet_configz(
+    transport: K8sReadTransport, transport_name: str, nodes: dict, findings: list[IaCFinding]
+) -> K8sCollectorEvidence:
+    """Bounded per-node kubelet config reads and CIS kubelet checks."""
+    config_count = 0
+    config_errors: list[K8sTransportError] = []
+    node_items = nodes.get("items", []) or []
+    config_truncated = len(node_items) > MAX_CONFIGZ_NODES
+    config_deadline = monotonic() + MAX_CONFIGZ_BUDGET_SECONDS
+    for node in node_items[:MAX_CONFIGZ_NODES]:
+        remaining_seconds = config_deadline - monotonic()
+        if remaining_seconds <= 0:
+            config_truncated = True
+            break
+        if not isinstance(node, dict):
+            continue
+        node_name = (node.get("metadata", {}) or {}).get("name")
+        if not node_name:
+            continue
+        try:
+            config = _read_node_configz(transport, node, remaining_seconds)
+        except K8sTransportError as exc:
+            config_errors.append(exc)
+            continue
+        config_count += 1
+        findings.extend(evaluate_kubelet_config(str(node_name), config))
+    return _configz_evidence(config_errors, config_truncated, config_count, transport_name)
+
+
+def _kubelet_configz_collector(
+    transport: K8sReadTransport, transport_name: str, payloads: dict[str, dict], enable_nodes_configz: bool, findings: list[IaCFinding]
+) -> K8sCollectorEvidence:
+    """Stage 4: kubelet ``/configz`` evidence; opt-in and gated on node inventory."""
+    if not enable_nodes_configz:
+        state, message = CollectorState.SKIPPED, "nodes/configz collection is opt-in and disabled"
+    elif "nodes" not in payloads:
+        state, message = CollectorState.UNEVALUABLE, "nodes/configz requires successful node inventory"
+    else:
+        return _collect_kubelet_configz(transport, transport_name, payloads["nodes"], findings)
+    return K8sCollectorEvidence(collector_id="kubelet_configz", state=state, message=message, transport=transport_name)
+
+
 def scan_live_cluster_posture_with_evidence(
     namespace: str = "default",
     all_namespaces: bool = False,
@@ -812,7 +1042,6 @@ def scan_live_cluster_posture_with_evidence(
     """
     findings: list[IaCFinding] = []
     collectors: list[K8sCollectorEvidence] = []
-    payloads: dict[str, dict] = {}
     owns_transport = transport is None
 
     if transport is None:
@@ -821,285 +1050,33 @@ def scan_live_cluster_posture_with_evidence(
                 context=context,
             )
         except K8sTransportError as exc:
-            collectors.extend(
-                K8sCollectorEvidence(
-                    collector_id=resource,
-                    state=CollectorState.FAILED,
-                    message=str(exc),
-                )
-                for resource in _POSTURE_RESOURCES
-            )
-            collectors.append(
-                K8sCollectorEvidence(
-                    collector_id="kubelet_configz",
-                    state=CollectorState.SKIPPED,
-                    message="nodes/configz collection was not started",
-                )
-            )
-            return K8sPostureResult(
-                findings=[],
-                collectors=collectors,
-                status=K8sPostureStatus.FAILED,
-                transport="unavailable",
-            )
+            return _transport_unavailable_result(exc)
 
     transport_name = transport.name
     try:
-        for resource in _POSTURE_RESOURCES:
-            resource_namespace = namespace if resource in {"pods", "networkpolicies", "roles"} else None
-            try:
-                read = transport.list_resource(
-                    resource,
-                    namespace=resource_namespace,
-                    all_namespaces=all_namespaces,
-                )
-            except K8sTransportError as exc:
-                collectors.append(
-                    K8sCollectorEvidence(
-                        collector_id=resource,
-                        state=_collector_state_for_error(exc),
-                        message=str(exc),
-                        transport=transport_name,
-                    )
-                )
-                continue
-            payloads[resource] = read.data
-            collectors.append(
-                K8sCollectorEvidence(
-                    collector_id=resource,
-                    state=CollectorState.EXECUTED,
-                    object_count=read.object_count,
-                    pages=read.pages,
-                    truncated=read.truncated,
-                    message="collection reached its configured bound" if read.truncated else "",
-                    transport=transport_name,
-                )
-            )
-
-        pods = payloads.get("pods", {"items": []})
+        payloads = _collect_posture_resources(transport, transport_name, namespace, all_namespaces, collectors)
         network_policies = payloads.get("networkpolicies", {"items": []})
-        cluster_role_bindings = payloads.get("clusterrolebindings", {"items": []})
-        cluster_roles = payloads.get("clusterroles", {"items": []})
-        roles = payloads.get("roles", {"items": []})
-        nodes = payloads.get("nodes", {"items": []})
-
         policy_namespaces = {
             item.get("metadata", {}).get("namespace", namespace)
             for item in network_policies.get("items", [])
             if isinstance(item, dict) and item.get("metadata", {}).get("namespace")
         }
         namespaces_with_pods: set[str] = set()
-
         if "pods" in payloads:
-            for pod in pods.get("items", []):
-                if not isinstance(pod, dict):
-                    continue
-                metadata = pod.get("metadata", {})
-                pod_name = metadata.get("name", "unknown")
-                pod_ns = metadata.get("namespace", namespace)
-                namespaces_with_pods.add(pod_ns)
-                pod_ref = f"k8s://{pod_ns}/{pod_name}"
-                spec = pod.get("spec", {}) or {}
-                status = pod.get("status", {}) or {}
-                phase = status.get("phase", "Unknown")
-
-                if phase != "Running":
-                    findings.append(
-                        IaCFinding(
-                            rule_id="K8S-LIVE-001",
-                            severity="medium",
-                            title="Live pod not running",
-                            message=(
-                                f"Pod '{pod_ns}/{pod_name}' is currently in phase '{phase}'. "
-                                "Investigate runtime drift, crash loops, or image/config rollout health."
-                            ),
-                            file_path=pod_ref,
-                            line_number=1,
-                            category="kubernetes-live",
-                            compliance=["CIS-K8s-5.7.4", "NIST-SI-4"],
-                        )
-                    )
-
-                container_statuses = status.get("containerStatuses", []) or []
-                for container_status in container_statuses:
-                    waiting = (container_status.get("state", {}) or {}).get("waiting", {}) or {}
-                    if waiting.get("reason") == "CrashLoopBackOff":
-                        findings.append(
-                            IaCFinding(
-                                rule_id="K8S-LIVE-002",
-                                severity="high",
-                                title="Live pod is crash looping",
-                                message=(
-                                    f"Pod '{pod_ns}/{pod_name}' container "
-                                    f"'{container_status.get('name', 'unknown')}' is in CrashLoopBackOff. "
-                                    "Runtime drift or bad rollout is already impacting availability."
-                                ),
-                                file_path=pod_ref,
-                                line_number=1,
-                                category="kubernetes-live",
-                                compliance=["CIS-K8s-5.7.4", "NIST-SI-4"],
-                            )
-                        )
-                    if not container_status.get("ready", False):
-                        findings.append(
-                            IaCFinding(
-                                rule_id="K8S-LIVE-003",
-                                severity="medium",
-                                title="Live pod container not ready",
-                                message=(
-                                    f"Pod '{pod_ns}/{pod_name}' container "
-                                    f"'{container_status.get('name', 'unknown')}' is not ready. "
-                                    "Live readiness drift may bypass assumptions in static manifests."
-                                ),
-                                file_path=pod_ref,
-                                line_number=1,
-                                category="kubernetes-live",
-                                compliance=["CIS-K8s-5.7.4", "NIST-SI-4"],
-                            )
-                        )
-
-                automount = spec.get("automountServiceAccountToken")
-                if automount is not False:
-                    explicit = automount is True
-                    detail = (
-                        "service-account token auto-mount explicitly enabled."
-                        if explicit
-                        else "service-account token auto-mount left at the Kubernetes default (enabled)."
-                    )
-                    findings.append(
-                        IaCFinding(
-                            rule_id="K8S-LIVE-004",
-                            severity="medium" if explicit else "low",
-                            title="Live pod mounts service-account token",
-                            message=(
-                                f"Pod '{pod_ns}/{pod_name}' is running with {detail} "
-                                "Set automountServiceAccountToken: false unless the workload needs Kubernetes API access."
-                            ),
-                            file_path=pod_ref,
-                            line_number=1,
-                            category="kubernetes-live",
-                            compliance=["CIS-K8s-5.1.6", "NIST-AC-6"],
-                        )
-                    )
-
-            findings.extend(evaluate_pod_security(pods, default_namespace=namespace))
-
+            namespaces_with_pods = _evaluate_live_pods(payloads["pods"], namespace, findings)
         # NetworkPolicy absence is only evaluable when both inputs completed.
         if "pods" in payloads and "networkpolicies" in payloads:
-            for ns in sorted(namespaces_with_pods):
-                if ns not in policy_namespaces:
-                    findings.append(
-                        IaCFinding(
-                            rule_id="K8S-LIVE-005",
-                            severity="high",
-                            title="Namespace lacks live NetworkPolicy coverage",
-                            message=(
-                                f"Namespace '{ns}' has running pods but no live NetworkPolicy objects. "
-                                "This is a runtime posture gap even if manifests exist elsewhere in Git."
-                            ),
-                            file_path=f"k8s://namespace/{ns}",
-                            line_number=1,
-                            category="kubernetes-live",
-                            compliance=["CIS-K8s-5.3.2", "NIST-SC-7"],
-                        )
-                    )
-
+            findings.extend(_network_policy_gaps(namespaces_with_pods, policy_namespaces))
         # Each RBAC input remains independently useful when another read is denied.
         findings.extend(
             evaluate_rbac(
-                cluster_roles if "clusterroles" in payloads else {"items": []},
-                roles if "roles" in payloads else {"items": []},
-                cluster_role_bindings if "clusterrolebindings" in payloads else {"items": []},
+                payloads.get("clusterroles", {"items": []}),
+                payloads.get("roles", {"items": []}),
+                payloads.get("clusterrolebindings", {"items": []}),
                 default_namespace=namespace,
             )
         )
-
-        if not enable_nodes_configz:
-            collectors.append(
-                K8sCollectorEvidence(
-                    collector_id="kubelet_configz",
-                    state=CollectorState.SKIPPED,
-                    message="nodes/configz collection is opt-in and disabled",
-                    transport=transport_name,
-                )
-            )
-        elif "nodes" not in payloads:
-            collectors.append(
-                K8sCollectorEvidence(
-                    collector_id="kubelet_configz",
-                    state=CollectorState.UNEVALUABLE,
-                    message="nodes/configz requires successful node inventory",
-                    transport=transport_name,
-                )
-            )
-        else:
-            config_count = 0
-            config_errors: list[K8sTransportError] = []
-            node_items = nodes.get("items", []) or []
-            config_truncated = len(node_items) > MAX_CONFIGZ_NODES
-            config_deadline = monotonic() + MAX_CONFIGZ_BUDGET_SECONDS
-            for node in node_items[:MAX_CONFIGZ_NODES]:
-                remaining_seconds = config_deadline - monotonic()
-                if remaining_seconds <= 0:
-                    config_truncated = True
-                    break
-                if not isinstance(node, dict):
-                    continue
-                node_name = (node.get("metadata", {}) or {}).get("name")
-                if not node_name:
-                    continue
-                endpoint = _kubelet_endpoint(node)
-                if endpoint is None:
-                    config_errors.append(
-                        K8sTransportError(
-                            "Node does not advertise an evaluable kubelet HTTPS endpoint",
-                            status_code=404,
-                            reason="unavailable",
-                        )
-                    )
-                    continue
-                kubelet_host, kubelet_port = endpoint
-                try:
-                    data = transport.get_kubelet_json(
-                        kubelet_host,
-                        kubelet_port,
-                        "/configz",
-                        timeout=max(1, min(MAX_CONFIGZ_REQUEST_SECONDS, ceil(remaining_seconds))),
-                    )
-                except K8sTransportError as exc:
-                    config_errors.append(exc)
-                    continue
-                config = data.get("kubeletconfig", data)
-                if not isinstance(config, dict) or not config:
-                    config_errors.append(K8sTransportError("nodes/configz returned no evaluable configuration", reason="invalid_json"))
-                    continue
-                config_count += 1
-                findings.extend(evaluate_kubelet_config(str(node_name), config))
-
-            if config_errors:
-                config_state = (
-                    CollectorState.FAILED
-                    if any(_collector_state_for_error(error) is CollectorState.FAILED for error in config_errors)
-                    else CollectorState.UNEVALUABLE
-                )
-                message = f"{len(config_errors)} node config read(s) were not evaluable"
-            elif config_truncated and config_count == 0:
-                config_state = CollectorState.UNEVALUABLE
-                message = "nodes/configz collection reached its configured bound before any node was evaluated"
-            else:
-                config_state = CollectorState.EXECUTED
-                message = "nodes/configz collection reached its configured bound" if config_truncated else ""
-            collectors.append(
-                K8sCollectorEvidence(
-                    collector_id="kubelet_configz",
-                    state=config_state,
-                    object_count=config_count,
-                    pages=config_count,
-                    truncated=config_truncated,
-                    message=message,
-                    transport=transport_name,
-                )
-            )
+        collectors.append(_kubelet_configz_collector(transport, transport_name, payloads, enable_nodes_configz, findings))
     finally:
         if owns_transport:
             transport.close()

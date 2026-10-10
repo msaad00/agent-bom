@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from agent_bom.models import Package, Severity, Vulnerability, compute_confidence
+from agent_bom.parsers.file_limits import read_json_limited
+from agent_bom.parsers.importers import ExternalScanImport, import_registered_report
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
@@ -416,7 +417,9 @@ def parse_sarif_json(data: dict[str, Any]) -> list[Package]:
 
 # ── Structured import (scan path) ─────────────────────────────────────────
 
-SUPPORTED_FORMATS_HINT = "SARIF 2.x, CycloneDX JSON, SPDX JSON, Trivy JSON, Grype JSON, or Syft JSON"
+SUPPORTED_FORMATS_HINT = (
+    "SARIF 2.x, CycloneDX JSON, SPDX JSON, Trivy JSON, Grype JSON, Syft JSON, Prowler JSON-OCSF, or AWS Security Hub ASFF"
+)
 
 # Advisory identifiers that mark a SARIF result as a dependency (SCA) result
 # rather than a code-level rule hit.
@@ -474,23 +477,6 @@ def external_source_label(tool_name: str | None) -> str:
 
     tool = sanitize_text(tool_name or "", max_len=80).strip()
     return f"{EXTERNAL_SOURCE_PREFIX}{tool}" if tool else "external"
-
-
-@dataclass
-class ExternalScanImport:
-    """Everything one external report contributes to a scan.
-
-    ``packages`` carry real package identities (dependency evidence);
-    ``findings`` carry code-level results and dependency results whose package
-    could not be resolved. Neither side invents package coordinates.
-    """
-
-    format: str
-    packages: list[Package] = field(default_factory=list)
-    findings: list["Finding"] = field(default_factory=list)
-    tool_names: list[str] = field(default_factory=list)
-    is_sbom: bool = False
-    notices: list[str] = field(default_factory=list)
 
 
 def manifest_ecosystem(uri: str | None) -> str:
@@ -748,19 +734,21 @@ def _ingest_sbom(data: dict[str, Any]) -> ExternalScanImport:
     return imported
 
 
-def ingest_external_report(data: dict[str, Any]) -> ExternalScanImport:
+def ingest_external_report(data: dict[str, Any] | list[Any]) -> ExternalScanImport:
     """Parse any supported external report into packages plus findings.
 
     SARIF results are routed by rule type: advisory-id rules (CVE/GHSA/…)
     become dependency evidence on the real ``package@version`` the result
     names; every other rule stays a code-level finding with file + line.
-    CycloneDX/SPDX documents go through the canonical SBOM parser.
+    CycloneDX/SPDX documents go through the canonical SBOM parser. Any other
+    shape (including a top-level list) goes to the importer registry
+    (:mod:`agent_bom.parsers.importers`): Prowler, Security Hub, plugins.
 
     Raises:
         ValueError: if the format cannot be identified.
     """
     if not isinstance(data, dict):
-        raise ValueError(f"Unrecognized scanner JSON format; expected {SUPPORTED_FORMATS_HINT}")
+        return import_registered_report(data, supported_hint=SUPPORTED_FORMATS_HINT)
     if is_sarif_document(data):
         return _ingest_sarif(data)
     if data.get("bomFormat") == "CycloneDX" or str(data.get("spdxVersion") or "").startswith("SPDX-"):
@@ -772,7 +760,12 @@ def ingest_external_report(data: dict[str, Any]) -> ExternalScanImport:
         return ExternalScanImport(format="grype", packages=_label_packages(parse_grype_json(data), external_source_label("grype")))
     if "artifacts" in data and "schema" in data:
         return ExternalScanImport(format="syft", packages=parse_syft_json(data), is_sbom=True)
-    raise ValueError(f"Unrecognized scanner JSON format; expected {SUPPORTED_FORMATS_HINT}")
+    return import_registered_report(data, supported_hint=SUPPORTED_FORMATS_HINT)
+
+
+def load_external_report(path: str | Path) -> ExternalScanImport:
+    """Read a report with the shared parser size limit, then ingest it."""
+    return ingest_external_report(read_json_limited(Path(path)))
 
 
 def detect_and_parse(data: dict[str, Any]) -> list[Package]:

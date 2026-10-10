@@ -82,6 +82,24 @@ agent-bom findings push trivy.json \
   --source trivy
 ```
 
+## Prowler / AWS Security Hub
+
+Cloud posture reports are auto-detected on both lanes. Prowler JSON-OCSF
+(`prowler aws --output-formats json-ocsf`) and Security Hub ASFF
+(`aws securityhub get-findings --output json`) import as cloud posture findings
+with account, region, resource ARN, vendor compliance references and
+tool provenance; Security Hub vulnerability records import as CVE findings.
+
+```bash
+agent-bom agents --external-scan prowler-output.ocsf.json -f json -o report.json
+agent-bom findings push securityhub.json --api-url https://agent-bom.internal.example.com \
+  --api-key "$AGENT_BOM_API_KEY" --source securityhub
+```
+
+PASS, muted, archived, suppressed and resolved records are skipped and counted
+in a scan notice. Field mapping, skip rules and the importer contract for
+adding another scanner are in [Scanner importers](IMPORTERS.md).
+
 ## `findings push` vs `--external-scan`
 
 | | `agent-bom agents --external-scan <file>` | `agent-bom findings push <file>` |

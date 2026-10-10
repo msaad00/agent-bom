@@ -49,7 +49,7 @@ def test_plugin_registry_status_is_metadata_only_and_counts_builtins(monkeypatch
     assert status["schema_version"] == "agent-bom.plugin_registry_status.v1"
     assert status["entrypoints_enabled"] is False
     assert status["metadata_only"] is True
-    assert status["totals"]["groups"] == 6
+    assert status["totals"]["groups"] == 7
     assert status["totals"]["builtin_registrations"] >= 38
     assert status["totals"]["declared_entrypoints"] == 1
     mcp_group = next(group for group in status["groups"] if group["group"] == "agent_bom.mcp_tools")

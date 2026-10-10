@@ -83,8 +83,14 @@ The `agent-bom plugins status` view also reports each group's `activation_enable
 state so operators can see what would run before enabling it.
 
 The registry status view also includes existing built-in extension groups:
-`agent_bom.cloud_providers`, `agent_bom.connectors`, and
-`agent_bom.inventory_parsers`.
+`agent_bom.cloud_providers`, `agent_bom.connectors`,
+`agent_bom.inventory_parsers`, and `agent_bom.importers`.
+
+`agent_bom.importers` registers file-based scanner report importers. Like
+inventory parsers, entries load when `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS`
+is set; they run after every built-in format and cannot replace a built-in
+importer. The contract, transparency manifest and a complete example are in
+[Scanner importers](IMPORTERS.md).
 
 Each group is capped at 32 loaded entry points per process. Import, validation,
 and coercion failures are non-fatal; built-in behavior remains available and

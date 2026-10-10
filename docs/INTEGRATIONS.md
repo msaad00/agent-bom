@@ -12,6 +12,7 @@ This matrix names the shipped role and a direct way to verify it.
 | Okta | Identity | Use Okta as an OIDC provider and optionally run gated, read-only non-human identity discovery. This is not presented as a full Okta CSPM connector. | `agent-bom identity discover --provider okta --format json` |
 | Snowflake | Data platform | Read-only source and posture evidence, Native App packaging, and selected warehouse-backed product paths. | `agent-bom connect snowflake`; see [cloud connections](CLOUD_CONNECT.md#6-snowflake--connect-with-a-key-pair-never-a-password) |
 | Databricks | Data platform | SDK-backed discovery of clusters, libraries, and model-serving endpoints plus read-only security best-practice checks. | `agent-bom scan --databricks --databricks-security` |
+| Prowler, AWS Security Hub | Report import | Import existing Prowler JSON-OCSF and Security Hub ASFF files as cloud posture and CVE findings with account, region, resource, compliance and tool provenance. File-based: no credentials, no network, no tool execution. | `agent-bom agents --external-scan prowler-output.ocsf.json`; see [scanner importers](IMPORTERS.md) |
 | ClickHouse | Analytics backend | Optional tenant-scoped analytics store for findings, posture history, trends, and runtime events. It is a backend, not a scanned cloud account. | `agent-bom report analytics --clickhouse-url URL` |
 
 Across these surfaces, raw credential values remain in the operator boundary.

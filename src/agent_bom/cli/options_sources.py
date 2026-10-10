@@ -169,8 +169,8 @@ def input_options(fn):
                 type=click.Path(exists=True),
                 default=None,
                 help=(
-                    "Path to an existing tool-agnostic report: SARIF 2.x, CycloneDX or SPDX JSON, or Trivy/Grype/Syft JSON. "
-                    "Adds its evidence to the scan without executing the producing tool; project auto-detection still runs. "
+                    "Path to an existing tool-agnostic report: SARIF 2.x, CycloneDX or SPDX JSON, Trivy/Grype/Syft JSON, "
+                    "Prowler JSON-OCSF, or AWS Security Hub ASFF. Adds its evidence without executing the producing tool. "
                     "SARIF dependency results (CVE/GHSA rule ids) attach to the real package@version, other SARIF results "
                     "stay SAST findings with file:line; a CycloneDX/SPDX SBOM without vulnerabilities is ingested like --sbom."
                 ),

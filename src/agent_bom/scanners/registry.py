@@ -189,7 +189,7 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             "agent_bom.parsers.external_scanners",
             phase=ScannerPhase.DISCOVERY,
             run_attr="detect_and_parse",
-            input_types=("sarif", "cyclonedx", "spdx", "trivy_json", "grype_json", "syft_json"),
+            input_types=("sarif", "cyclonedx", "spdx", "trivy_json", "grype_json", "syft_json", "prowler_ocsf", "asff"),
             output_types=("packages", "vulnerabilities", "findings"),
             finding_types=("external-finding", "sast", "sca", "sbom-package"),
             summary="Tool-agnostic evidence import through canonical SARIF, SBOM, and scanner-native parsers.",

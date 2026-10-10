@@ -12,6 +12,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Storage backends now carry a declared support tier: PostgreSQL (server system of record) and SQLite (local, CLI and pilot) are supported, ClickHouse is an analytics sink only, and the Snowflake control-plane stores and the Neptune graph backend are experimental. When an experimental backend is selected, the API logs one warning at startup that names the backend, its tier and `docs/STORAGE_BACKENDS.md`. In a deployment that looks multi-tenant, the warning states that tenant isolation for that backend is not proven. Startup continues by default. `AGENT_BOM_REQUIRE_SUPPORTED_STORAGE=1` refuses to start with an experimental backend. `agent-bom doctor` lists the tier of each selected store under Platform integrations; experimental rows count as warnings.
+- `--external-scan`, `findings push` and the MCP `ingest_external_scan` tool now import Prowler v4/v5 JSON-OCSF and AWS Security Hub ASFF reports. FAIL and MANUAL Prowler results and active Security Hub findings become cloud posture findings with account, region, resource ARN, vendor compliance references and tool provenance; Security Hub vulnerability records become CVE findings. PASS, muted, archived, suppressed and resolved records are skipped and counted in a scan notice. Imports are file-based: no credentials, network access or tool execution.
+- Scanner importer contract (`agent_bom.parsers.importers`) with a published transparency manifest per importer and an opt-in `agent_bom.importers` entry-point group for third-party importers. See `docs/IMPORTERS.md`.
 - A Python direct compromise assessment contract classifies scoped authorization receipts from a selected graph node or an explicitly assumed affected component. It preserves action-specific denials, uncertainty, original edge direction and collection timestamps. This read-only foundation does not establish current access, successful exploitation or multi-hop reachability.
 
 ### Changed
@@ -19,6 +21,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The top-level module guard (`scripts/check_package_layout.py`) now names a likely subpackage for each new `src/agent_bom/*.py` file and points to the new `docs/CODE_MAP.md`, which maps common changes to their owning packages, canonical models and layering rules. The guard has its own regression test.
 - `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
 - The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
+- `--external-scan` reports are now read with the shared parser size limit (`AGENT_BOM_MAX_MANIFEST_BYTES`) in the CLI and API scan paths.
 
 ## [0.108.4] - 2026-10-09
 

@@ -90,3 +90,35 @@ def test_postgres_job_deletion_cleans_snapshots_after_opt_out(monkeypatch, all_t
     finally:
         set_scan_snapshot_store(None)
         pool.close()
+
+
+def test_postgres_verified_snapshot_reads_preserve_tenant_scope(monkeypatch):
+    from copy import deepcopy
+
+    from agent_bom.api.postgres_common import _new_application_pool
+    from agent_bom.api.postgres_scan_snapshot import PostgresScanSnapshotStore
+    from agent_bom.api.scan_snapshot import materialize_job_snapshot
+    from agent_bom.api.scan_snapshot_read import verified_snapshot_findings
+    from agent_bom.api.scan_snapshot_store import set_scan_snapshot_store
+    from tests.test_scan_snapshot import _job
+
+    tenant, other = ("snapshot-read-" + uuid4().hex for _ in range(2))
+    job = _job(tenant_id=tenant)
+    pool = _new_application_pool(min_size=1, max_size=2)
+    store = PostgresScanSnapshotStore(pool=pool)
+    set_scan_snapshot_store(store)
+    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_READS", "1")
+    try:
+        meta, rows = materialize_job_snapshot(job)
+        expected = deepcopy([row["payload"] for row in rows])
+        store.put_snapshot(tenant, job.job_id, meta, rows)
+        rows[0]["payload"]["title"] = "other tenant"
+        store.put_snapshot(other, job.job_id, meta, rows)
+        actual = verified_snapshot_findings(job, lambda: expected, lambda row: row)
+        assert actual == expected and actual is not expected
+        assert actual[0]["title"] != "other tenant"
+    finally:
+        store.delete_tenant(tenant)
+        store.delete_tenant(other)
+        set_scan_snapshot_store(None)
+        pool.close()

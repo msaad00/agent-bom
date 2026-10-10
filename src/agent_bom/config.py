@@ -467,8 +467,7 @@ OIDC_DISCOVERY_SHIM_JSON = _str("AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON", "")
 
 # ── Demo Estate ──────────────────────────────────────────────────────────
 # Enables curated demo-estate bootstrap on loopback / hosted proof paths. Off
-# by default so production deployments never seed synthetic estate data unless
-# an operator explicitly opts in.
+# by default; production deployments seed synthetic data only with explicit opt-in.
 DEMO_ESTATE = _bool("AGENT_BOM_DEMO_ESTATE", False)
 
 
@@ -478,8 +477,9 @@ def demo_story_prewarm_enabled() -> bool:
 
 
 # ── Scan finding snapshots (opt-in, ADR-015) ──────────────────────────────
-# Materialize each completed scan job's intrinsic finding rows once, after the job is durably DONE. Off by default; nothing reads them yet.
+# Opt-in writes and differential-verified reads. Reads compare with the current collector before returning a snapshot candidate.
 SCAN_SNAPSHOTS_ENABLED = _bool("AGENT_BOM_SCAN_SNAPSHOTS", False)
+SCAN_SNAPSHOT_READS_ENABLED = _bool("AGENT_BOM_SCAN_SNAPSHOT_READS", False)
 
 
 def scan_snapshots_enabled() -> bool:

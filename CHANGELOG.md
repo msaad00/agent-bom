@@ -21,6 +21,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
 - The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
 - `--external-scan` reports are now read with the shared parser size limit (`AGENT_BOM_MAX_MANIFEST_BYTES`) in the CLI and API scan paths.
+- Cloud discovery for AWS (AI services, organizations, inventory), Azure, GCP (inventory and authorization), Snowflake, Databricks, CoreWeave, Nebius, Lambda Labs, RunPod, local GPU infrastructure and the NVIDIA advisory check is split into named stages. Each stage keeps its own error isolation and warning text, so discovery output, warnings and API calls are unchanged. Kubernetes GPU parsing shared by CoreWeave and Nebius moves to `cloud/k8s_gpu_common.py`; GCP authorization record normalizers move to `cloud/gcp_authorization_records.py`; Snowflake notebook discovery moves to `cloud/snowflake_notebooks.py`. 35 architecture debt entries are retired.
 
 ## [0.108.4] - 2026-10-09
 
